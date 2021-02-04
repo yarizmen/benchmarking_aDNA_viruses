@@ -1,0 +1,45 @@
+---
+title: "Simulations paper plots"
+author: "Yami Ommar AC"
+date: "2/4/2021"
+output: html_document
+---
+
+```{r libraries, echo = FALSE}
+library(data.table)
+library(ggplot2)
+library(tidyr)
+```
+
+```{r paths}
+sim_data <- "~/walle_virome/simulations_Feb_2020b/"
+```
+
+
+Plots for "simulations paper".
+
+# Length of viral genomes ploth
+
+```{r sequence length data}
+seq_lgt <- fread(input = paste0(sim_data, "GenomeSize_120virus.txt"), sep = ">", drop = c(1, 2))
+colnames(seq_lgt) <- c("length")
+```
+
+
+```{r sequence length plot}
+ggplot(seq_lgt[length < 500000], aes(x = length)) + 
+  geom_histogram(bins = 90)
+
+
+ggplot(seq_lgt, aes(x = "viral genomes", y = length)) + 
+  geom_jitter()
+```
+
+
+# Initial simulations (60 bp, no damage, default sequencing error)
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
