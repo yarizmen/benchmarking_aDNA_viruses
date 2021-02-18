@@ -19,27 +19,451 @@ sim_data <- "~/walle_virome/simulations_Feb_2020b/"
 Plots for "simulations paper".
 
 # Length of viral genomes ploth
+This part corresponds to create the figure regarding the sequence length of the 120 viral sequences used in the study.
 
+Load data: 120 viral sequences used & all the sequences in the viral RefSeq.
 ```{r sequence length data}
+# 120 viral sequences used
 seq_lgt <- fread(input = paste0(sim_data, "GenomeSize_120virus.txt"), sep = ">", drop = c(1, 2))
 colnames(seq_lgt) <- c("length")
+
+# All RefSeq sequences
+RefSeq_lgt <- fread(input = paste0(sim_data, "Allvirus_GenomeSize.txt"), sep = ">", drop = c(1, 2))
+colnames(RefSeq_lgt) <- c("length")
 ```
 
-
-```{r sequence length plot}
-ggplot(seq_lgt[length < 500000], aes(x = length)) + 
-  geom_histogram(bins = 90)
+Histogram of the 120 viral sequences
+```{r sequence length plot (120 viruses)}
+# To remove the outlier: seq_lgt[length < 500000]
+ggplot(seq_lgt, aes(x = length)) +
+  geom_histogram(bins = 30, aes(y = stat(count)/sum(count))) +
+  scale_x_continuous(trans = 'log10')
 
 
 ggplot(seq_lgt, aes(x = "viral genomes", y = length)) + 
   geom_jitter()
 ```
 
+Overlapping histograms: one for 120 viral sequences; and one for the RefSeq viral sequences
+```{r histograms: sequence length 120 viruses and RefSeq}
+ggplot() +
+  geom_histogram(data = RefSeq_lgt,
+                 bins = 300, 
+                 aes(x = length, y = stat(count)/sum(count),
+                     fill = "RS"),# colour = "RS"),
+                 #fill = "#E69F00", 
+                 alpha = 0.3) +
+  geom_histogram(data = seq_lgt, 
+                 bins = 50,
+                 aes(x = length, y = stat(count)/sum(count),
+                     fill = "v120"),# colour = "v120"), 
+                 #fill = "#0072B2", 
+                 alpha = 0.2) +
+  scale_x_continuous(trans = 'log10') +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c("RS" = "#E69F00", "v120" = "#0072B2"), 
+                    labels = c("RS" = "RefSeq 10,544 viral sequences", 
+                               "v120" = "Our 120 viral sequences"),
+                    name = "Legend") +
+  scale_colour_manual(values = c("RS" = "#E69F00", "v120" = "#0072B2"), 
+                    labels = c("RS" = "RefSeq 10,544 viral sequences", 
+                               "v120" = "Our 120 viral sequences"),
+                    name = "Legend")
+```
+
+Density proposed by Sam. Discarded.
+```{r density as Sam}
+# Not used
+
+v120 <- hist(log10(seq_lgt$length))
+ggplot(data = log10(RefSeq_lgt), aes(x = length)) +
+  geom_bar(data = data.frame(v120$density, v120$mids), 
+           aes(x=v120.mids, y=v120.density), 
+           stat = "identity") +  
+  geom_density()
+```
+
+Histogram of RefSeq with overlapping lines plot of the 120 viral sequences.
+```{r RefSeq histogram + 120v lines}
+ggv120 <- ggplot() +
+  geom_histogram(data = seq_lgt, 
+                 bins = 50,
+                 aes(x = length, y = stat(count)/sum(count))) +
+  scale_x_continuous(trans = 'log10') +
+  scale_y_continuous(labels = scales::percent)
+
+data_ggv120 <- ggplot_build(ggv120)
+
+ggplot() +
+  geom_histogram(data = RefSeq_lgt,
+                 bins = 50, 
+                 aes(x = length, y = stat(count)/sum(count),
+                     fill = "RS"), 
+                 alpha = 0.3) +
+  geom_line(data = as.data.frame(data_ggv120$data), 
+            aes(x = 10^x, y = y, color = "v120")) +
+  scale_x_continuous(trans = 'log10') +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c("RS" = "#E69F00", "v120" = "#0072B2"), 
+                    labels = c("RS" = "RefSeq 10,544 viral sequences", 
+                               "v120" = "Our 120 viral sequences"),
+                    name = "Legend") +
+  scale_colour_manual(values = c("RS" = "#E69F00", "v120" = "#0072B2"), 
+                    labels = c("RS" = "RefSeq 10,544 viral sequences", 
+                               "v120" = "Our 120 viral sequences"),
+                    name = "Legend")
+```
+
+Histogram of RefSeq with overlapping step plot of the 120 viral sequences. Final figure regarding length.
+```{r RefSeq lines + 120v histogram}
+ggv120 <- ggplot() +
+  geom_histogram(data = RefSeq_lgt, 
+                 bins = 50,
+                 aes(x = length, y = stat(count)/sum(count))) +
+  scale_x_continuous(trans = 'log10') +
+  scale_y_continuous(labels = scales::percent)
+
+data_ggv120 <- ggplot_build(ggv120)
+
+ggplot() +
+  geom_histogram(data = seq_lgt,
+                 bins = 50, 
+                 aes(x = length, y = stat(count)/sum(count),
+                     fill = "v120"), 
+                 alpha = 0.3) +
+  geom_step(data = as.data.frame(data_ggv120$data), 
+            aes(x = 10^x, y = y, color = "RS")) +
+  scale_x_continuous(trans = 'log10') +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c("RS" = "#0072B2", "v120" = "#E69F00"),
+                    labels = c("v120" = "120 viral sequences",
+                               "RS" = "RefSeq 10,544 viral sequences"),
+                    name = "") +
+  scale_colour_manual(values = c("v120" = "#E69F00", "RS" = "#0072B2"),
+                    labels = c("v120" = "120 viral sequences", 
+                               "RS" = "RefSeq 10,544 viral sequences"),
+                     name = "") +
+  theme_classic() +
+  xlab("Length (bp)") +
+  ylab("Frequency")
+  
+```
+
 
 # Initial simulations (60 bp, no damage, default sequencing error)
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+This section is to create the figures regarding the first simulation. The first simulation was using simulated reads of 60 bp long, without damage, and with the default sequencing error.
+
+Load data, prepare paths.
+```{r paths & data}
+total_sim_reads <- scan(file = paste0(sim_data, "TotalSimulatedReads_v120.txt"))
+
+Centrifuge_path <- paste0(sim_data, "Centrifuge_output/")
+Kraken2 <- paste0(sim_data, "Kraken2_output/")
+DIAMOND_path <- paste0(sim_data, "DIAMOND_output/")
+MetaPhlAn2 <- paste0(sim_data, "MetaPhlAn2_output/")
+
+Centrifuge_120v_results <- fread(file = paste0(sim_data, "Centrifuge_120v_RawNumbers.txt"))
+Kraken2_120v_results <- fread(file = paste0(sim_data, "Kraken2_120v_RawNumbers.txt"))
+DIAMOND_120v_results <- fread(file = paste0(sim_data, "DIAMOND_120v_RawNumbers.txt"))
+MetaPhlAn2_120v_results <- fread(file = paste0(sim_data, "MetaPhlAn2_120v_RawNumbers.txt"))
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r Centrifuge 60bp}
+# Classified reads
+Centrifuge_120v_results <- fread(file = paste0(Centrifuge_path, "Centrifuge_classified.txt"))
+setnames(Centrifuge_120v_results, "V1", "class")
+# Unclassified reads
+Centrifuge_120v_results[, unclass := (total_sim_reads - Centrifuge_120v_results$V1)]
+# Correct classified: species level
+Centrifuge_120v_results[, Correct_Sp := fread(file = paste0(Centrifuge_path,
+                                                            "Correct/", "Centrifuge_correct"),
+                                              header = F, select = c(2))]
+# Correct classified: higher taxonomic level
+Centrifuge_120v_results[, Correct_HT := 
+                          fread(file = paste0(Centrifuge_path, 
+                                              "Higher_taxa/", "Centrifuge_HigTaxa"), 
+                                header = F, select = c(2))]
+# Incorrect classified reads
+Centrifuge_120v_results[, Incorrect := (class - (Correct_Sp + Correct_HT))]
+```
+
+```{r DIAMOND 60bp}
+# Classified & unclassified reads
+DIAMOND_120v_results <- transpose(fread(file = paste0(DIAMOND_path, "DIAMOND_ClassUnc.txt")))
+names(DIAMOND_120v_results) <- c("class", "unclass")
+# Correct classified: species level
+DIAMOND_120v_results[, Correct_Sp := fread(file = paste0(DIAMOND_path,
+                                                            "Correct/", "DIAMOND_correct"),
+                                              header = F, select = c(2))]
+# Correct classified: higher taxonomic level
+DIAMOND_120v_results[, Correct_HT := 
+                          fread(file = paste0(DIAMOND_path, 
+                                              "Higher_taxa/", "DIAMOND_HigTaxa"), 
+                                header = F, select = c(2))]
+# Incorrect classified reads
+DIAMOND_120v_results[, Incorrect := (class - (Correct_Sp + Correct_HT))]
+```
+
+Prepare data for ggplot2: create dataframe with overall proportions of the 4 categories (correctly classified at species level, correctly classified at higher taxonomic ranks, incorrectly classified and unclassified) for the 4 classifiers.
+```{r dataframe for barplot}
+Centrifuge_proportions <- c(Centrifuge_120v_results[, (sum(Correct_Sp)/sum(TotalSimReads))*100],
+                            Centrifuge_120v_results[, (sum(Correct_HT)/sum(TotalSimReads))*100],
+                            Centrifuge_120v_results[, (sum(Incorrect)/sum(TotalSimReads))*100],
+                            Centrifuge_120v_results[, (sum(unclass)/sum(TotalSimReads))*100])
+
+Kraken2_proportions <- c(Kraken2_120v_results[, (sum(Correct_Sp)/sum(TotalSimReads))*100],
+                            Kraken2_120v_results[, (sum(Correct_HT)/sum(TotalSimReads))*100],
+                            Kraken2_120v_results[, (sum(Incorrect)/sum(TotalSimReads))*100],
+                            Kraken2_120v_results[, (sum(unclass)/sum(TotalSimReads))*100])
+
+DIAMOND_proportions <- c(DIAMOND_120v_results[, (sum(Correct_Sp)/sum(TotalSimReads))*100],
+                            DIAMOND_120v_results[, (sum(Correct_HT)/sum(TotalSimReads))*100],
+                            DIAMOND_120v_results[, (sum(Incorrect)/sum(TotalSimReads))*100],
+                            DIAMOND_120v_results[, (sum(unclass)/sum(TotalSimReads))*100])
+
+MetaPhlAn2_proportions <- c(MetaPhlAn2_120v_results[, (sum(Correct_Sp)/sum(TotalSimReads))*100],
+                            MetaPhlAn2_120v_results[, (sum(Correct_HT)/sum(TotalSimReads))*100],
+                            MetaPhlAn2_120v_results[, (sum(Incorrect)/sum(TotalSimReads))*100],
+                            MetaPhlAn2_120v_results[, (sum(unclass)/sum(TotalSimReads))*100])
+
+proportions <- c(Centrifuge_proportions, Kraken2_proportions, DIAMOND_proportions, 
+                 MetaPhlAn2_proportions)
+classifiers_names <- c(rep("Centrifuge", 4), rep("Kraken2", 4), rep("DIAMOND", 4),
+                       rep("MetaPhlAn2", 4)) %>% factor(., levels = c("Centrifuge", "Kraken2",
+                                                                      "DIAMOND", "MetaPhlAn2"))
+category <- c(rep(c("Correct species", "Correct higher", "Incorrect", "Unclassified"), 4)) %>% factor(., levels = c("Correct species", "Correct higher", "Incorrect", "Unclassified"))
+
+classifiers_proportions <- data.frame(proportions, classifiers_names, category) 
+```
+
+Grouped barplot by classifier, showing overall proportion for the 4 different categories. 
+```{r barplot: correct species, correct higher taxa, incorrect, unclassified}
+colorcillos <- c(rgb(0, 158, 115, maxColorValue = 255),
+                 rgb(181, 230, 0, maxColorValue = 255),
+                 rgb(243, 155, 0, maxColorValue = 255),
+                 rgb(213, 213, 213, maxColorValue = 255))
+
+classifiers_barplot <- ggplot(data = classifiers_proportions, 
+       aes(fill = category, y = proportions, x = classifiers_names)) +
+  geom_bar(position = "dodge", stat = "identity") +
+  geom_text(aes(label = round(proportions, digits = 2)), vjust = -0.5, size = 3, 
+            position = position_dodge(0.9)) +
+  scale_fill_manual(values = colorcillos) +
+  theme_classic() +
+  xlab("") +
+  ylab("% of reads")
+
+info_classifiers_barplot <- ggplot_build(classifiers_barplot)
+```
+
+Function to add jittered points for each virus observation.
+```{r jitter variation}
+jitter_variation <- function(ggbarplot, classifier, x_axis_coords, category, classifier_name) {
+  # jv_plot <- ggplot()
+  jv_plot <- ggbarplot
+  
+  for (i in levels(x_axis_coords$category)) {
+    props_120v <- classifier[, (get(category[i])/TotalSimReads) * 100] %>% as.data.frame()
+    props_120v <- cbind(props_120v, 
+          rep(x_axis_coords[classifiers_names == classifier_name & category == i]$x_coords, 120))
+    category_col <- rep(names(category[i]), 120) %>% 
+      factor(., levels = c("Correct species", "Correct higher", "Incorrect", "Unclassified"))
+    props_120v <- cbind(props_120v, category_col)
+    names(props_120v) <- c("props", "x_coord", "category")
+    
+    jv_plot <- jv_plot + 
+      geom_jitter(data = props_120v, mapping = aes(x = x_coord, y = props, 
+                                                   fill = NA),
+                                                   #colour = "black", fill = NA),
+                  size = 0.3, width = 0.1)
+  }
+  
+  return(jv_plot)
+  
+}
+```
+
+Data for overlapping jittered points for each virus observation. 
+```{r data: barplot with variation}
+x_coords <- as.data.table(classifiers_proportions[, c(2, 3)])
+x_coords[, x_coords := info_classifiers_barplot$data[[1]]$x]
+
+category_cols <- c("Correct_Sp", "Correct_HT", "Incorrect", "unclass")
+names(category_cols) <- c("Correct species", "Correct higher", "Incorrect", "Unclassified")
+
+# ggbarplot <- ggplot() + 
+#   geom_bar(data = classifiers_proportions, 
+#        aes(y = proportions, x = classifiers_names, fill = category, colour = colorcillos), 
+#        position = "dodge", stat = "identity", fill = category, colour = colorcillos) +
+#   geom_text(data = classifiers_proportions,
+#             aes(y = proportions, x = classifiers_names,
+#                 label = round(proportions, digits = 2)), vjust = -0.5, size = 3, 
+#             position = position_dodge(0.9)) +
+#   theme_classic() +
+#   xlab("") +
+#   ylab("% of reads")
+```
+
+Grouped barplot by classifier, showing overall proportion for the 4 different categories. overlapping: jittered points for each virus observation.
+```{r barplot with variation}
+dots <- jitter_variation(ggbarplot = classifiers_barplot, classifier = Centrifuge_120v_results, 
+                         x_axis_coords = x_coords, 
+                         category = category_cols, classifier_name = "Centrifuge")
+
+for (i in c("Kraken2", "DIAMOND", "MetaPhlAn2")) {
+  dots <- jitter_variation(ggbarplot = dots, classifier = get(paste0(i, "_120v_results")), 
+                           x_axis_coords = x_coords, category = category_cols, 
+                           classifier_name = i)
+}
+```
+
+Prepare data frame for violin plot requested by Sam.
+```{r data: violin plot}
+Centrifuge_props_per_virus <- c(Centrifuge_120v_results[, (Correct_Sp/TotalSimReads)*100],
+                            Centrifuge_120v_results[, (Correct_HT/TotalSimReads)*100],
+                            Centrifuge_120v_results[, (Incorrect/TotalSimReads)*100],
+                            Centrifuge_120v_results[, (unclass/TotalSimReads)*100])
+
+Kraken2_props_per_virus <- c(Kraken2_120v_results[, (Correct_Sp/TotalSimReads)*100],
+                            Kraken2_120v_results[, (Correct_HT/TotalSimReads)*100],
+                            Kraken2_120v_results[, (Incorrect/TotalSimReads)*100],
+                            Kraken2_120v_results[, (unclass/TotalSimReads)*100])
+
+DIAMOND_props_per_virus <- c(DIAMOND_120v_results[, (Correct_Sp/TotalSimReads)*100],
+                            DIAMOND_120v_results[, (Correct_HT/TotalSimReads)*100],
+                            DIAMOND_120v_results[, (Incorrect/TotalSimReads)*100],
+                            DIAMOND_120v_results[, (unclass/TotalSimReads)*100])
+
+MetaPhlAn2_props_per_virus <- c(MetaPhlAn2_120v_results[, (Correct_Sp/TotalSimReads)*100],
+                            MetaPhlAn2_120v_results[, (Correct_HT/TotalSimReads)*100],
+                            MetaPhlAn2_120v_results[, (Incorrect/TotalSimReads)*100],
+                            MetaPhlAn2_120v_results[, (unclass/TotalSimReads)*100])
+
+props_per_virus <- c(Centrifuge_props_per_virus, Kraken2_props_per_virus, DIAMOND_props_per_virus, 
+                     MetaPhlAn2_props_per_virus)
+
+classifiers_names <- c(rep("Centrifuge", 480), rep("Kraken2", 480), rep("DIAMOND", 480),
+                       rep("MetaPhlAn2", 480)) %>% factor(., levels = c("Centrifuge", "Kraken2",
+                                                                      "DIAMOND", "MetaPhlAn2"))
+category <- c(rep(c(rep("Correct species", 120), rep("Correct higher", 120), 
+                    rep("Incorrect", 120), rep("Unclassified", 120)), 4)) %>% factor(., levels = c("Correct species", "Correct higher", "Incorrect", "Unclassified"))
+
+classifiers_proportions_per_virus <- data.frame(props_per_virus, classifiers_names, category) 
+```
+
+Grouped violin plot by classifier. I warned they were ugly.
+```{r violin plots}
+ggplot(data = classifiers_proportions_per_virus, 
+       aes(fill = category, x = classifiers_names, y = props_per_virus)) +
+  geom_violin(position = "dodge") +
+  scale_fill_manual(values = colorcillos)
+```
+
+Violin plot only for Centrifuge data to show that there is nothing wrong, but violin plots won't help us this time.
+```{r test Centrifuge alone (violin plot)}
+ggplot(data = classifiers_proportions_per_virus, 
+       aes(fill = category, x = classifiers_names, y = props_per_virus)) +
+  geom_violin(position = "dodge") +
+  scale_fill_manual(values = colorcillos)
+
+
+test_centri <- data.frame(Centrifuge_props_per_virus, c(rep("Correct species", 120), 
+                                                        rep("Correct higher", 120),
+                                                        rep("Incorrect", 120), 
+                                                        rep("Unclassified", 120)))
+
+names(test_centri) <- c("props", "category")
+ggplot(data = test_centri, 
+       aes(fill = category, x = category, y = props)) +
+  geom_violin() +
+  scale_fill_manual(values = colorcillos)
+
+```
+
+## Median instead of overall proportion
+
+This section is to create a barplot as before, but instead the overall proportion using the median of the data.
+
+Function to get the overall proportions (with or without median). And function to create data frames for ggplot2. 
+```{r get overall proportions and create df}
+get_overall_proportions <- function(classifications, median = F) {
+  
+  if (median == F) {
+    correct_sp <- classifications[, (sum(Correct_Sp)/sum(TotalSimReads))*100]
+    correct_ht <- classifications[, (sum(Correct_HT)/sum(TotalSimReads))*100]
+    incorrect <- classifications[, (sum(Incorrect)/sum(TotalSimReads))*100]
+    unclass <- classifications[, (sum(unclass)/sum(TotalSimReads))*100]
+  } else {
+    correct_sp <- classifications[, median((Correct_Sp/TotalSimReads)*100)]
+    correct_ht <- classifications[, median((Correct_HT/TotalSimReads)*100)]
+    incorrect <- classifications[, median((Incorrect/TotalSimReads)*100)]
+    unclass <- classifications[, median((unclass/TotalSimReads)*100)]
+  }
+  
+  overall_proportions <- c(correct_sp, correct_ht, incorrect, unclass)
+  return(overall_proportions)
+}
+
+create_df_overall <- function(proportions, classifiers, categories) {
+  classifiers_names <- sapply(classifiers, FUN = function(x) {rep(x, length(categories))}) %>% 
+    as.vector(.) %>%
+    factor(., levels = classifiers)
+  category <- c(rep(categories, length(classifiers))) %>% factor(., levels = categories)
+  
+  df <- data.frame(proportions, classifiers_names, category)
+  
+  return(df)
+}
+```
+
+Obtain data frame with medians for ggplot2.
+```{r data median}
+classifier_list <- list(Centrifuge_120v_results, Kraken2_120v_results, 
+                        DIAMOND_120v_results, MetaPhlAn2_120v_results)
+
+classifier_medians <- lapply(classifier_list, 
+                             FUN = function(x) {get_overall_proportions(x, median = T)}) %>% 
+  unlist(.)
+
+df_medians <- create_df_overall(proportions = classifier_medians, 
+                                classifiers = c("Centrifuge", "Kraken2", "DIAMOND", "MetaPhlAn2"), 
+                                categories = c("Correct species", "Correct higher", "Incorrect",
+                                               "Unclassified"))
+```
+
+Grouped barplot by classifier for the median of the proportions. Overlapping jittered points for each virus observation.
+```{r barplot & jitter median}
+classifiers_barplot_median <- ggplot(data = df_medians, 
+       aes(fill = category, y = proportions, x = classifiers_names)) +
+  geom_bar(position = "dodge", stat = "identity") +
+  geom_text(aes(label = round(proportions, digits = 2)), vjust = -0.5, size = 3, 
+            position = position_dodge(0.9)) +
+  scale_fill_manual(values = colorcillos) +
+  theme_classic() +
+  xlab("") +
+  ylab("% of reads")
+
+info_classifiers_barplot_median <- ggplot_build(classifiers_barplot_median)
+
+x_coords <- as.data.table(df_medians[, c(2, 3)])
+x_coords[, x_coords := info_classifiers_barplot_median$data[[1]]$x]
+
+category_cols <- c("Correct_Sp", "Correct_HT", "Incorrect", "unclass")
+names(category_cols) <- c("Correct species", "Correct higher", "Incorrect", "Unclassified")
+
+dots_median <- jitter_variation(ggbarplot = classifiers_barplot_median, 
+                                classifier = Centrifuge_120v_results, 
+                                x_axis_coords = x_coords, category = category_cols, 
+                                classifier_name = "Centrifuge")
+
+for (i in c("Kraken2", "DIAMOND", "MetaPhlAn2")) {
+  dots_median <- jitter_variation(ggbarplot = dots_median, 
+                                  classifier = get(paste0(i, "_120v_results")), 
+                                  x_axis_coords = x_coords, category = category_cols, 
+                                  classifier_name = i)
+}
+
+dots_median
+```
+
