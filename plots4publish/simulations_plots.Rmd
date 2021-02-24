@@ -19,7 +19,8 @@ sim_data <- "~/walle_virome/simulations_Feb_2020b/"
 Plots for "simulations paper".
 
 # Length of viral genomes ploth
-This part corresponds to create the figure regarding the sequence length of the 120 viral sequences used in the study.
+This part corresponds to create the figure regarding the sequence length of the 120 viral sequences
+used in the study.
 
 Load data: 120 viral sequences used & all the sequences in the viral RefSeq.
 ```{r sequence length data}
@@ -114,7 +115,8 @@ ggplot() +
                     name = "Legend")
 ```
 
-Histogram of RefSeq with overlapping step plot of the 120 viral sequences. Final figure regarding length.
+Histogram of RefSeq with overlapping step plot of the 120 viral sequences. Final figure regarding
+length.
 ```{r RefSeq lines + 120v histogram}
 ggv120 <- ggplot() +
   geom_histogram(data = RefSeq_lgt, 
@@ -152,7 +154,8 @@ ggplot() +
 
 # Initial simulations (60 bp, no damage, default sequencing error)
 
-This section is to create the figures regarding the first simulation. The first simulation was using simulated reads of 60 bp long, without damage, and with the default sequencing error.
+This section is to create the figures regarding the first simulation. The first simulation was using
+simulated reads of 60 bp long, without damage, and with the default sequencing error.
 
 Load data, prepare paths.
 ```{r paths & data}
@@ -167,42 +170,6 @@ Centrifuge_120v_results <- fread(file = paste0(sim_data, "Centrifuge_120v_RawNum
 Kraken2_120v_results <- fread(file = paste0(sim_data, "Kraken2_120v_RawNumbers.txt"))
 DIAMOND_120v_results <- fread(file = paste0(sim_data, "DIAMOND_120v_RawNumbers.txt"))
 MetaPhlAn2_120v_results <- fread(file = paste0(sim_data, "MetaPhlAn2_120v_RawNumbers.txt"))
-```
-
-```{r Centrifuge 60bp}
-# Classified reads
-Centrifuge_120v_results <- fread(file = paste0(Centrifuge_path, "Centrifuge_classified.txt"))
-setnames(Centrifuge_120v_results, "V1", "class")
-# Unclassified reads
-Centrifuge_120v_results[, unclass := (total_sim_reads - Centrifuge_120v_results$V1)]
-# Correct classified: species level
-Centrifuge_120v_results[, Correct_Sp := fread(file = paste0(Centrifuge_path,
-                                                            "Correct/", "Centrifuge_correct"),
-                                              header = F, select = c(2))]
-# Correct classified: higher taxonomic level
-Centrifuge_120v_results[, Correct_HT := 
-                          fread(file = paste0(Centrifuge_path, 
-                                              "Higher_taxa/", "Centrifuge_HigTaxa"), 
-                                header = F, select = c(2))]
-# Incorrect classified reads
-Centrifuge_120v_results[, Incorrect := (class - (Correct_Sp + Correct_HT))]
-```
-
-```{r DIAMOND 60bp}
-# Classified & unclassified reads
-DIAMOND_120v_results <- transpose(fread(file = paste0(DIAMOND_path, "DIAMOND_ClassUnc.txt")))
-names(DIAMOND_120v_results) <- c("class", "unclass")
-# Correct classified: species level
-DIAMOND_120v_results[, Correct_Sp := fread(file = paste0(DIAMOND_path,
-                                                            "Correct/", "DIAMOND_correct"),
-                                              header = F, select = c(2))]
-# Correct classified: higher taxonomic level
-DIAMOND_120v_results[, Correct_HT := 
-                          fread(file = paste0(DIAMOND_path, 
-                                              "Higher_taxa/", "DIAMOND_HigTaxa"), 
-                                header = F, select = c(2))]
-# Incorrect classified reads
-DIAMOND_120v_results[, Incorrect := (class - (Correct_Sp + Correct_HT))]
 ```
 
 Prepare data for ggplot2: create dataframe with overall proportions of the 4 categories (correctly classified at species level, correctly classified at higher taxonomic ranks, incorrectly classified and unclassified) for the 4 classifiers.
@@ -230,9 +197,10 @@ MetaPhlAn2_proportions <- c(MetaPhlAn2_120v_results[, (sum(Correct_Sp)/sum(Total
 proportions <- c(Centrifuge_proportions, Kraken2_proportions, DIAMOND_proportions, 
                  MetaPhlAn2_proportions)
 classifiers_names <- c(rep("Centrifuge", 4), rep("Kraken2", 4), rep("DIAMOND", 4),
-                       rep("MetaPhlAn2", 4)) %>% factor(., levels = c("Centrifuge", "Kraken2",
-                                                                      "DIAMOND", "MetaPhlAn2"))
-category <- c(rep(c("Correct species", "Correct higher", "Incorrect", "Unclassified"), 4)) %>% factor(., levels = c("Correct species", "Correct higher", "Incorrect", "Unclassified"))
+                       rep("MetaPhlAn2", 4)) %>% 
+  factor(., levels = c("Centrifuge", "Kraken2", "DIAMOND", "MetaPhlAn2"))
+category <- c(rep(c("Correct species", "Correct higher", "Incorrect", "Unclassified"), 4)) %>%
+  factor(., levels = c("Correct species", "Correct higher", "Incorrect", "Unclassified"))
 
 classifiers_proportions <- data.frame(proportions, classifiers_names, category) 
 ```
@@ -360,7 +328,8 @@ ggplot(data = classifiers_proportions_per_virus,
   scale_fill_manual(values = colorcillos)
 ```
 
-Violin plot only for Centrifuge data to show that there is nothing wrong, but violin plots won't help us this time.
+Violin plot only for Centrifuge data to show that there is nothing wrong, but violin plots won't
+help us this time.
 ```{r test Centrifuge alone (violin plot)}
 ggplot(data = classifiers_proportions_per_virus, 
        aes(fill = category, x = classifiers_names, y = props_per_virus)) +
@@ -383,9 +352,11 @@ ggplot(data = test_centri,
 
 ## Median instead of overall proportion
 
-This section is to create a barplot as before, but instead the overall proportion using the median of the data.
+This section is to create a barplot as before, but instead the overall proportion using the median
+of the data.
 
-Function to get the overall proportions (with or without median). And function to create data frames for ggplot2. 
+Function to get the overall proportions (with or without median). And function to create data frames
+for ggplot2. 
 ```{r get overall proportions and create df}
 get_overall_proportions <- function(classifications, median = F) {
   
@@ -432,7 +403,8 @@ df_medians <- create_df_overall(proportions = classifier_medians,
                                                "Unclassified"))
 ```
 
-Grouped barplot by classifier for the median of the proportions. Overlapping jittered points for each virus observation.
+Grouped barplot by classifier for the median of the proportions. Overlapping jittered points for
+each virus observation.
 ```{r barplot & jitter median}
 classifiers_barplot_median <- ggplot(data = df_medians, 
        aes(fill = category, y = proportions, x = classifiers_names)) +
@@ -465,5 +437,7 @@ for (i in c("Kraken2", "DIAMOND", "MetaPhlAn2")) {
 }
 
 dots_median
+# names(colorcillos) <- c("Correct species", "Correct higher", "Incorrect", "Unclassified")
+# dots_median + scale_fill_manual(values = colorcillos)
 ```
 
