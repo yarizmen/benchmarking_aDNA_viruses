@@ -9,6 +9,9 @@ output: html_document
 library(data.table)
 library(ggplot2)
 library(tidyr)
+library(gtools)
+library(gridExtra)
+library(grid)
 ```
 
 ```{r paths}
@@ -127,14 +130,16 @@ ggv120 <- ggplot() +
 
 data_ggv120 <- ggplot_build(ggv120)
 
-ggplot() +
+viral_sequences_lgth <- ggplot() +
   geom_histogram(data = seq_lgt,
                  bins = 50, 
                  aes(x = length, y = stat(count)/sum(count),
                      fill = "v120"), 
-                 alpha = 0.3) +
+                 alpha = 0.3, 
+                 show.legend = F) +
   geom_step(data = as.data.frame(data_ggv120$data), 
-            aes(x = 10^x, y = y, color = "RS")) +
+            aes(x = 10^x, y = y, color = "RS"),
+            show.legend = F) +
   scale_x_continuous(trans = 'log10') +
   scale_y_continuous(labels = scales::percent) +
   scale_fill_manual(values = c("RS" = "#0072B2", "v120" = "#E69F00"),
@@ -148,7 +153,8 @@ ggplot() +
   theme_classic() +
   xlab("Length (bp)") +
   ylab("Frequency")
-  
+
+ggsave("~/Dropbox/Virome/PLoS_ONE_virome/figures/viral_sequences_lgth.pdf", viral_sequences_lgth)
 ```
 
 
@@ -439,5 +445,99 @@ for (i in c("Kraken2", "DIAMOND", "MetaPhlAn2")) {
 dots_median
 # names(colorcillos) <- c("Correct species", "Correct higher", "Incorrect", "Unclassified")
 # dots_median + scale_fill_manual(values = colorcillos)
+```
+
+# Length variation
+
+```{r function to create df for variation simulations}
+create_df_condition <- function(path2data, condition, condition_values) {
+  
+  all_tables <- vector(mode = "list", length = length(condition_values))
+  
+  for (i in c(1:length(condition_values))) {
+    all_tables[[i]] <- read.csv(file = paste0(path2data, condition, abs(condition_values[i]), 
+                                         "/stats_means_classifiers.csv"), 
+                             header = T, row.names = 1)
+  }
+  
+  classifiers <- colnames(all_tables[[1]])
+  
+  t_all_tables <- lapply(all_tables, t)
+  df_all_tables <- lapply(t_all_tables, as.data.frame)  %>% rbindlist 
+  
+  
+  classifier <- rep(classifiers, length(condition_values)) %>% factor(., levels = classifiers)
+  df_all_tables <- cbind(df_all_tables, classifier)
+  
+  values <- sapply(condition_values, rep, length(classifiers), simplify = F) %>% unlist(.)
+  df_all_tables <- cbind(df_all_tables, values)
+  
+  return(df_all_tables)
+}
+```
+
+```{r length variation data}
+length_variation <- create_df_condition(path2data = sim_data, condition = "Lengths/length_",
+                                        condition_values = c(30, 40, 50, 60, 90, 120, 150))
+```
+
+```{r plots length variation}
+classifier_colors <- c("#56B4E9","#0072B2", "#D55E00", "#CC79A7") 
+
+p_lgth_classified <- ggplot(data = length_variation, aes(x = values, colour = classifier)) +
+  theme_bw() +
+  geom_line(aes(y = prop_classified), size = 1) + 
+  geom_point(aes(y = prop_classified)) +
+  ylab("%") +
+  xlab("read length (bp)") +
+  scale_color_manual(values = classifier_colors, ) +
+  ggtitle("Classified proportion") +
+  theme(legend.position = c(0.1, 0.25))
+
+p_lgth_classified
+```
+
+```{r function to create plots}
+comparison_ggplot_lines <- function(condition_df, classifier_colors, ylabs, xlabs, titles) {
+  stats <- colnames(condition_df)[1:8]
+  
+  ggplots_list <- vector(mode = "list", length = length(stats))
+  
+  for (i in c(1:length(stats))) {
+    
+    my_ggplot <- ggplot(data = condition_df, aes(x = values, colour = classifier)) + 
+      theme_bw() + 
+      geom_line(aes(y = stats[i] %>% get), size = 1) + 
+      geom_point(aes(y = stats[i] %>% get)) +
+      ylab(ylabs[i]) +
+      xlab(xlabs[i]) +
+      scale_color_manual(values = classifier_colors) +
+      ggtitle(titles[i]) + 
+      theme(legend.position = c(0.1, 0.25))
+    
+    ggplots_list[[i]] <- ggplotGrob(my_ggplot)
+  }
+  
+  return(ggplots_list)
+}
+```
+
+```{r}
+length_plots <- comparison_ggplot_lines(condition_df = length_variation, 
+                                        classifier_colors = classifier_colors,
+                                        ylabs = c(rep("%", 6), "# identified", 
+                                                  "# extra taxa reported"), 
+                                        xlabs = rep("read length (bp)", 8), 
+                                        titles = c("Proportion classified", 
+                                                   "Proportion correct species", 
+                                                   "Proportion correct higher",
+                                                   "Proportion incorrect classified",
+                                                   "Precision", "Sensitivity", 
+                                                   "Identified viruses", "Extra taxa reported"))
+
+g_lengths <- grid.arrange(grobs = length_plots, ncol = 2, nrow = 4)
+ggsave("~/Downloads/Lengths.pdf", g_lengths, width = 7, height = 10, units = "in", scale = 2)
+
+
 ```
 
