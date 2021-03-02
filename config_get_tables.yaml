@@ -6,6 +6,14 @@ classifiers_R: "\"c(\\\"Centrifuge\\\", \\\"Kraken2\\\", \\\"DIAMOND\\\", \\\"Me
 classifiers: ['Centrifuge', 'Kraken2', 'DIAMOND', 'MetaPhlAn2']
 #path2data: 'length_'
 
-condition: 'length'
+# For lenght simulations
+# condition: 'length'
+# condition_values: [30, 40, 50, 60, 90, 120, 150]
 
-condition_values: [30, 40, 50, 60, 90, 120, 150]
+# For deamination simulations
+# condition: 'Deam_singlstr'
+# condition_values: ['0', '05', '1', '15', '2', '25', '3', '35', '4', '45', '5']
+
+# For substitutions (sequencing error) simulations
+condition: 'SeqErr_neg'
+condition_values: [0, 1, 10, 11, 13, 15, 3, 5, 7, 9]

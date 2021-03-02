@@ -1,0 +1,20 @@
+# Config file for run_classifiers.smk
+
+samples: ['ERR4093844']
+
+# Centrifuge
+path2Centrifuge: '/scratch/wally/FAC/FBM/DBC/amalaspi/popgen/yarizmen/virome/tools_scripts/Centrifuge/centrifuge-1.0.3-beta/centrifuge'
+path2Centrifuge_db: '/scratch/wally/FAC/FBM/DBC/amalaspi/virome/yarizmen/simulations_Feb_2020b/abv'
+
+# Kraken2
+path2Kraken2: '/scratch/wally/FAC/FBM/DBC/amalaspi/popgen/yarizmen/virome/tools_scripts/kraken2-master/kraken2'
+path2Kraken2_db: '/scratch/wally/FAC/FBM/DBC/amalaspi/virome/yarizmen/simulations_Feb_2020b/KRAKEN2database'
+
+# DIAMOND
+# path2DIAMOND: '/scratch/wally/FAC/FBM/DBC/amalaspi/popgen/yarizmen/virome/tools_scripts/DIAMOND/diamond-0.9.22/bin/diamond'
+path2DIAMOND: '/scratch/wally/FAC/FBM/DBC/amalaspi/popgen/sneuensc/virome_yami/diamond'
+path2DIAMOND_db: '/scratch/wally/FAC/FBM/DBC/amalaspi/virome/yarizmen/simulations_Feb_2020b/Viral_tax'
+
+# MetaPhlAn2
+path2MetaPhlAn2: '/scratch/wally/FAC/FBM/DBC/amalaspi/popgen/yarizmen/virome/tools_scripts/MetaPhlan2/metaphlan2/metaphlan2.py'
+
