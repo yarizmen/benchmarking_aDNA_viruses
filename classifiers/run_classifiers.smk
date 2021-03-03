@@ -4,10 +4,14 @@ configfile: 'config_run_classifiers.yaml'
 
 rule all:
     input:
-        expand("Centrifuge_output/{sample}/{sample}_classifications.txt", sample=config['samples']),
-        expand("Kraken2_output/{sample}/{sample}_K2out.txt", sample=config['samples']),
-        expand("DIAMOND_output/{sample}/{sample}_tax.txt", sample=config['samples']),
-        expand("MetaPhlAn2_output/{sample}/{sample}_out.txt", sample=config['samples'])
+        expand("Centrifuge_output/{sample}/{sample}_ReadsTaxon_NamesRanks.tsv", 
+                sample=config['samples']),
+        expand("Kraken2_output/{sample}/{sample}_ReadsTaxon_NamesRanks.tsv", 
+                sample=config['samples']),
+        expand("DIAMOND_output/{sample}/{sample}_ReadsTaxon_NamesRanks.tsv", 
+                sample=config['samples']),
+        expand("MetaPhlAn2_output/{sample}/{sample}_ReadsTaxon_NamesRanks.tsv", 
+                sample=config['samples'])
 
 rule get_fasta:
     input:
@@ -39,13 +43,29 @@ rule run_Centrifuge:
         memory = 24000
     threads: 5
     benchmark:
-        "benchmarks/Centrifuge/{sample}.benchmark.txt"
+        "benchmarks/Centrifuge/{sample}/{sample}.benchmark.txt"
     log:
-        "logs/Centrifuge/{sample}_run_Centrifuge.log"
+        "logs/Centrifuge/{sample}/{sample}_run_Centrifuge.log"
     shell:
         '''
         {params.Centrifuge} -x {params.database} -f -U {input} -p {threads} -k {params.assign} \
         --report-file {output.report_file} -S {output.classifications}
+        '''
+
+rule reads_per_taxon_Centrifuge:
+    input:
+        "Centrifuge_output/{sample}/{sample}_classifications.txt"
+    output:
+        "Centrifuge_output/{sample}/{sample}_ReadspTaxon.txt"
+    params:
+        runtime = "02:00:00"
+    resources:
+        memory = 3000
+    log:
+        "logs/Centrifuge/{sample}/{sample}_reads_per_taxon_Centrifuge.log"
+    shell:
+        '''
+        cut -f3 {input} | grep -v 'taxID' | sort | uniq -c | awk '{{print $1"\t"$2}}' > {output}
         '''
 
 rule run_Kraken2:
@@ -62,13 +82,30 @@ rule run_Kraken2:
         memory = 36000
     threads: 5
     benchmark:
-        "benchmarks/Kraken2/{sample}.benchmark.txt"
+        "benchmarks/Kraken2/{sample}/{sample}.benchmark.txt"
     log:
-        "logs/Kraken2/{sample}_run_Centrifuge.log"
+        "logs/Kraken2/{sample}/{sample}_run_Centrifuge.log"
     shell:
         '''
         {params.Kraken2} --db {params.database} {input} --threads {threads} \
         --report {output.report_file} --use-names > {output.K2out}
+        '''
+
+rule reads_per_taxon_Kraken2:
+    input:
+        "Kraken2_output/{sample}/{sample}_K2out.txt"
+    output:
+        "Kraken2_output/{sample}/{sample}_ReadspTaxon.txt"
+    params:
+        runtime = "02:00:00"
+    resources:
+        memory = 3000
+    log:
+        "logs/Kraken2/{sample}/{sample}_reads_per_taxon_Kraken2.log"
+    shell:
+        '''
+        grep '^C' {input} | cut -f3 | egrep -o '\(.+\)' | egrep -o '[0-9]+' | sort | uniq -c | \
+        awk '{{print $1"\t"$2}}' > {output}
         '''
 
 rule run_DIAMOND:
@@ -86,13 +123,29 @@ rule run_DIAMOND:
         #constraint = 'AVX512' 
     threads: 5
     benchmark:
-        "benchmarks/DIAMOND/{sample}.benchmark.txt"
+        "benchmarks/DIAMOND/{sample}/{sample}.benchmark.txt"
     log:
-        "logs/DIAMOND/{sample}_run_DIAMOND.log"
+        "logs/DIAMOND/{sample}/{sample}_run_DIAMOND.log"
     shell:
         '''
         {params.DIAMOND} {params.mode} -p {threads} -d {params.database} -q {input} -o {output} \
         -f 102
+        '''
+
+rule reads_per_taxon_DIAMOND:
+    input:
+        "DIAMOND_output/{sample}/{sample}_tax.txt"
+    output:
+        "DIAMOND_output/{sample}/{sample}_ReadspTaxon.txt"
+    params:
+        runtime = "02:00:00"
+    resources:
+        memory = 3000
+    log:
+        "logs/DIAMOND/{sample}/{sample}_reads_per_taxon_DIAMOND.log"
+    shell:
+        '''
+        cut -f2 {input} | grep -wv '0' | sort | uniq -c | awk '{{print $1"\t"$2}}' > {output}
         '''
 
 rule run_MetaPhlAn2:
@@ -110,9 +163,9 @@ rule run_MetaPhlAn2:
         memory = 12000
     threads: 5
     benchmark:
-        "benchmarks/MetaPhlAn2/{sample}.benchmark.txt"
+        "benchmarks/MetaPhlAn2/{sample}/{sample}.benchmark.txt"
     log:
-        "logs/MetaPhlAn2/{sample}_run_MetaPhlAn2.log"
+        "logs/MetaPhlAn2/{sample}/{sample}_run_MetaPhlAn2.log"
     shell:
         '''
         module add UHTS/Aligner/bowtie2/2.3.4.1;
@@ -120,3 +173,125 @@ rule run_MetaPhlAn2:
         {params.MetaPhlAn2} {input} --bowtie2out {output.bt2o} --nproc {threads} \
         --input_type {params.i_type} -t {params.o_type} -o {output.MPA2_out}
         '''
+
+rule reads_per_taxon_MetaPhlAn2:
+    input:
+        "MetaPhlAn2_output/{sample}/{sample}_out.txt"
+    output:
+        counts = temp("MetaPhlAn2_output/{sample}/{sample}_counts.txt"),
+        MPA2_names = temp("MetaPhlAn2_output/{sample}/LastTaxRank")
+    params:
+         runtime = "01:00:00"
+    resources:
+        memory = 1500
+    log:
+        "logs/MetaPhlAn2/{sample}/{sample}_reads_per_taxon_MetaPhlAn2.log"
+    shell:
+        '''
+        grep -v '#' {input} | grep -v '^$' | cut -f2 | sort | uniq -c | \
+        awk '{{print $1"\t"$2}}' | cut -f1 > {output.counts}
+
+        grep -v '#' {input} | grep -v '^$' | cut -f2 | sort | uniq -c | awk '{{print $1"\t"$2}}' | \
+        cut -f2 | sed 's/|t__.\+//g' | grep -oP '\|\w__[^\|]+$' | sed 's/^|\w__//g' | \
+        sed 's/_/ /g' > {output.MPA2_names}
+        '''
+
+rule get_taxID_from_MPA2_names:
+    input:
+        counts = "MetaPhlAn2_output/{sample}/{sample}_counts.txt",
+        MPA2_names = "MetaPhlAn2_output/{sample}/LastTaxRank"
+    output:
+        taxIDs = temp("MetaPhlAn2_output/{sample}/MPA2_taxID"),
+        ReadspTaxon = "MetaPhlAn2_output/{sample}/{sample}_ReadspTaxon.txt"
+    params:
+        runtime = "01:00:00",
+        path2Rscript = config['path2Rscript']
+    resources:
+        memory = 3000
+    log:
+        "logs/MetaPhlAn2/{sample}/{sample}_get_taxID_from_MPA2_names.log"
+    shell:
+        '''
+        module add R/3.6.1;
+
+        Rscript --vanilla {params.path2Rscript} -i {input.MPA2_names} -o {output.taxIDs}
+
+        paste {input.counts} {output.taxIDs} > {output.ReadspTaxon}
+        '''
+
+rule get_name_rank:
+    input:
+        taxon_id = "{classifier}_output/{sample}/{sample}_ReadspTaxon.txt"
+    output:
+        name_rank = temp("{classifier}_output/{sample}/{sample}_NamesRanks.tsv"),
+        join = temp("{classifier}_output/{sample}/{sample}_joined.tsv")
+    params:
+        api_key = config['api_key']
+    resources:
+        memory = 2000
+    log:
+        "logs/{classifier}/{sample}/{sample}_get_name_rank.log"
+    shell:
+        '''
+        for i in `cut -f2 {input.taxon_id}`; do
+        efetch -api_key {params.api_key} -db taxonomy -id ${{i}} -format xml | \
+        xtract -pattern Taxon -element TaxId ScientificName Rank >> {output.name_rank};
+        done
+
+        paste {input.taxon_id} {output.name_rank} > {output.join}
+        '''
+
+rule reformat_extra_taxids:
+    input:
+        "{classifier}_output/{sample}/{sample}_joined.tsv"
+    output:
+        ReadsTaxon="{classifier}_output/{sample}/{sample}_ReadsTaxon_NamesRanks.tsv",
+        moreTaxID="{classifier}_output/{sample}/{sample}_extra_TaxIDs_retrieved.tsv"
+    params:
+        runtime = "01:00:00"
+    resources:
+        memory = 1000
+    log:
+        "logs/{classifier}/{sample}/{sample}_reformat_extra_taxids.log"
+    shell:
+        '''
+        awk 'BEGIN{{FS="\\t"; OFS="\\t"}} \
+        {{if (NF>5) {{print $0 > "{output.moreTaxID}"; print $1,$2,$4,$5,$6 > \
+        "{output.ReadsTaxon}"}} \
+        else {{ print$0 > "{output.ReadsTaxon}"}} }}' {input}
+
+        touch {output.moreTaxID}
+        '''
+
+# rule reads_per_taxon_MetaPhlAn2:
+#     input:
+#         "MetaPhlAn2_output/{sample}/{sample}_out.txt"
+#     output:
+#         counts = temp("MetaPhlAn2_output/{sample}/{sample}_ReadspTaxon_counts.txt"),
+#         MPA2_names = temp("MetaPhlAn2_output/{sample}/{sample}_MPA2_names.txt"),
+#         name_rank_id = temp("MetaPhlAn2_output/{sample}/{sample}_name_rank_id.txt"),
+#         counts_name_rank_id = "MetaPhlAn2_output/{sample}/{sample}_ReadspTaxon_name_rank_id.txt"
+#     params:
+#         runtime = "02:00:00",
+#         api_key = config['api_key']
+#     resources:
+#         memory = 3000
+#     log:
+#         "logs/DIAMOND/{sample}_reads_per_taxon_DIAMOND.log"
+#     shell:
+#         '''
+#         grep -v '#' {input} | grep -v '^$' | cut -f2 | sort | uniq -c | \
+#         awk '{{print $1"\t"$2}}' | cut -f1 > {output.counts}
+
+#         grep -v '#' {input} | grep -v '^$' | cut -f2 | sort | uniq -c | awk '{{print $1"\t"$2}}' | \
+#         cut -f2 | sed 's/|t__.\+//g' | grep -oP '\|\w__[^\|]+$' | sed 's/^|\w__//g' | \
+#         sed 's/_/ /g' > {output.MPA2_names}
+
+#         cat {output.MPA2_names} | while IFS= read -r line; do
+#         esearch -api_key {params.api_key} -db taxonomy \
+#         -query "${{line}}[Scientific Name]" < /dev/null | efetch -format xml | \
+#         xtract -pattern Taxon -element TaxId ScientificName Rank;
+#         done >> {output.name_rank_id};
+
+#         paste {output.counts} {output.name_rank_id} > {output.counts_name_rank_id}
+#         '''

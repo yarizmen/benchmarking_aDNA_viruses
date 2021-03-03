@@ -18,3 +18,8 @@ path2DIAMOND_db: '/scratch/wally/FAC/FBM/DBC/amalaspi/virome/yarizmen/simulation
 # MetaPhlAn2
 path2MetaPhlAn2: '/scratch/wally/FAC/FBM/DBC/amalaspi/popgen/yarizmen/virome/tools_scripts/MetaPhlan2/metaphlan2/metaphlan2.py'
 
+api_key: "8f5a7ee70253e037c5641bab48b0d6d74908"
+
+# From MetaPhlAn2 names to taxIDs
+#path2Rscript: '/scratch/wally/FAC/FBM/DBC/amalaspi/popgen/yarizmen/virome/tools_scripts/MetaPhlAn2_labels_2_taxIDs.R'
+path2Rscript: '/scratch/wally/FAC/FBM/DBC/amalaspi/virome/yarizmen/simulations_classifiers/classifiers/MetaPhlAn2_labels_to_taxIDs_v2.R'
