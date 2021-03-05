@@ -1,0 +1,8 @@
+# config file to run "generate_reads.smk"
+
+source_fastas: ['hg19']
+
+# ART parameters
+seq_technology: 'HS25'
+length: 60
+coverage: 10
