@@ -15,11 +15,13 @@ rule all:
 
 rule get_fasta:
     input:
-        "samples/fastq_files/{sample}.fastq"
+        "samples/fastq_files/{sample}.fq.gz"
     output:
         "samples/fasta_files/{sample}.fna"
     resources:
         memory = 5000
+    params:
+        runtime = "04:00:00"
     log:
         "logs/{sample}/{sample}_get_fasta.log"
     shell:
@@ -40,7 +42,7 @@ rule run_Centrifuge:
         database = config['path2Centrifuge_db'],
         assign = 1
     resources:
-        memory = 24000
+        memory = 30000
     threads: 5
     benchmark:
         "benchmarks/Centrifuge/{sample}/{sample}.benchmark.txt"
@@ -58,7 +60,9 @@ rule reads_per_taxon_Centrifuge:
     output:
         "Centrifuge_output/{sample}/{sample}_ReadspTaxon.txt"
     params:
-        runtime = "02:00:00"
+        runtime = "02:00:00",
+        empty_ReadsTaxon_NamesRanks = "Centrifuge_output/{sample}/{sample}_ReadsTaxon_NamesRanks.tsv",
+        empty_Correct_Incorrect = "Centrifuge_output/{sample}/{sample}_Correct_Incorrect.tsv"
     resources:
         memory = 3000
     log:
@@ -66,6 +70,12 @@ rule reads_per_taxon_Centrifuge:
     shell:
         '''
         cut -f3 {input} | grep -v 'taxID' | sort | uniq -c | awk '{{print $1"\t"$2}}' > {output}
+
+        if ! [ -s {output} ]; then 
+                awk 'BEGIN{{print 0"\\t"0"\\t"0"\\t"0"\\t"0}}' > {params.empty_ReadsTaxon_NamesRanks};
+                awk 'BEGIN{{print 0"\\t"0"\\t"0"\\t"0"\\t"0"\\tUnclassified\\t"0}}' > \
+                {params.empty_Correct_Incorrect}
+        fi
         '''
 
 rule run_Kraken2:
@@ -79,7 +89,7 @@ rule run_Kraken2:
         Kraken2 = config['path2Kraken2'],
         database = config['path2Kraken2_db']
     resources:
-        memory = 36000
+        memory = 48000
     threads: 5
     benchmark:
         "benchmarks/Kraken2/{sample}/{sample}.benchmark.txt"
@@ -97,15 +107,27 @@ rule reads_per_taxon_Kraken2:
     output:
         "Kraken2_output/{sample}/{sample}_ReadspTaxon.txt"
     params:
-        runtime = "02:00:00"
+        runtime = "02:00:00",
+        empty_ReadsTaxon_NamesRanks = "Kraken2_output/{sample}/{sample}_ReadsTaxon_NamesRanks.tsv",
+        empty_Correct_Incorrect = "Kraken2_output/{sample}/{sample}_Correct_Incorrect.tsv"
     resources:
         memory = 3000
     log:
         "logs/Kraken2/{sample}/{sample}_reads_per_taxon_Kraken2.log"
     shell:
         '''
+        set +e
+
         grep '^C' {input} | cut -f3 | egrep -o '\(.+\)' | egrep -o '[0-9]+' | sort | uniq -c | \
         awk '{{print $1"\t"$2}}' > {output}
+
+        exitcode=${{PIPESTATUS[0]}}
+        if [[ exitcode -eq 1 ]]; then
+            awk 'BEGIN{{print 0"\\t"0"\\t"0"\\t"0"\\t"0}}' > {params.empty_ReadsTaxon_NamesRanks};
+            awk 'BEGIN{{print 0"\\t"0"\\t"0"\\t"0"\\t"0"\\tUnclassified\\t"0}}' > \
+            {params.empty_Correct_Incorrect}
+            exit 0
+        fi
         '''
 
 rule run_DIAMOND:
@@ -138,14 +160,26 @@ rule reads_per_taxon_DIAMOND:
     output:
         "DIAMOND_output/{sample}/{sample}_ReadspTaxon.txt"
     params:
-        runtime = "02:00:00"
+        runtime = "02:00:00",
+        empty_ReadsTaxon_NamesRanks = "DIAMOND_output/{sample}/{sample}_ReadsTaxon_NamesRanks.tsv",
+        empty_Correct_Incorrect = "DIAMOND_output/{sample}/{sample}_Correct_Incorrect.tsv"
     resources:
         memory = 3000
     log:
         "logs/DIAMOND/{sample}/{sample}_reads_per_taxon_DIAMOND.log"
     shell:
         '''
+        set +e
+        
         cut -f2 {input} | grep -wv '0' | sort | uniq -c | awk '{{print $1"\t"$2}}' > {output}
+        
+        exitcode=${{PIPESTATUS[1]}}
+        if [[ exitcode -eq 1 ]]; then
+            awk 'BEGIN{{print 0"\\t"0"\\t"0"\\t"0"\\t"0}}' > {params.empty_ReadsTaxon_NamesRanks};
+            awk 'BEGIN{{print 0"\\t"0"\\t"0"\\t"0"\\t"0"\\tUnclassified\\t"0}}' > \
+            {params.empty_Correct_Incorrect}
+            exit 0
+        fi
         '''
 
 rule run_MetaPhlAn2:
@@ -181,25 +215,40 @@ rule reads_per_taxon_MetaPhlAn2:
         counts = temp("MetaPhlAn2_output/{sample}/{sample}_counts.txt"),
         MPA2_names = temp("MetaPhlAn2_output/{sample}/LastTaxRank")
     params:
-         runtime = "01:00:00"
+        runtime = "01:00:00",
+        empty_ReadsTaxon_NamesRanks = "MetaPhlAn2_output/{sample}/{sample}_ReadsTaxon_NamesRanks.tsv",
+        empty_Correct_Incorrect = "MetaPhlAn2_output/{sample}/{sample}_Correct_Incorrect.tsv"
     resources:
         memory = 1500
     log:
         "logs/MetaPhlAn2/{sample}/{sample}_reads_per_taxon_MetaPhlAn2.log"
     shell:
         '''
-        grep -v '#' {input} | grep -v '^$' | cut -f2 | sort | uniq -c | \
+        set +e
+
+        grep -v '#' {input} | grep -v '^$' | cut -f2 | sed 's/|t__.\+//g' | sort | uniq -c | \
         awk '{{print $1"\t"$2}}' | cut -f1 > {output.counts}
 
-        grep -v '#' {input} | grep -v '^$' | cut -f2 | sort | uniq -c | awk '{{print $1"\t"$2}}' | \
-        cut -f2 | sed 's/|t__.\+//g' | grep -oP '\|\w__[^\|]+$' | sed 's/^|\w__//g' | \
-        sed 's/_/ /g' > {output.MPA2_names}
+
+        exitcode=${{PIPESTATUS[1]}}
+        if [[ exitcode -eq 1 ]]; then
+            awk 'BEGIN{{print 0"\\t"0"\\t"0"\\t"0"\\t"0}}' > {params.empty_ReadsTaxon_NamesRanks};
+            awk 'BEGIN{{print 0"\\t"0"\\t"0"\\t"0"\\t"0"\\tUnclassified\\t"0}}' > \
+            {params.empty_Correct_Incorrect}
+            touch {output.MPA2_names}
+            exit 0
+        else
+            grep -v '#' {input} | grep -v '^$' | cut -f2 | sed 's/|t__.\+//g' | sort | uniq -c | \
+            awk '{{print $1"\t"$2}}' | cut -f2 | grep -oP '\|\w__[^\|]+$' | \
+            sed 's/^|\w__//g' | sed 's/_/ /g' > {output.MPA2_names}
+        fi
+
         '''
 
 rule get_taxID_from_MPA2_names:
     input:
-        counts = "MetaPhlAn2_output/{sample}/{sample}_counts.txt",
-        MPA2_names = "MetaPhlAn2_output/{sample}/LastTaxRank"
+        counts = ancient("MetaPhlAn2_output/{sample}/{sample}_counts.txt"),
+        MPA2_names = ancient("MetaPhlAn2_output/{sample}/LastTaxRank")
     output:
         taxIDs = temp("MetaPhlAn2_output/{sample}/MPA2_taxID"),
         ReadspTaxon = "MetaPhlAn2_output/{sample}/{sample}_ReadspTaxon.txt"
@@ -221,12 +270,13 @@ rule get_taxID_from_MPA2_names:
 
 rule get_name_rank:
     input:
-        taxon_id = "{classifier}_output/{sample}/{sample}_ReadspTaxon.txt"
+        taxon_id = ancient("{classifier}_output/{sample}/{sample}_ReadspTaxon.txt")
     output:
         name_rank = temp("{classifier}_output/{sample}/{sample}_NamesRanks.tsv"),
         join = temp("{classifier}_output/{sample}/{sample}_joined.tsv")
     params:
-        api_key = config['api_key']
+        api_key = config['api_key'],
+        runtime = "04:00:00"
     resources:
         memory = 2000
     log:

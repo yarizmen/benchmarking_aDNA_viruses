@@ -36,7 +36,7 @@ MPA2_taxID <- c(1:length(MPA2_120v_names$V1))
 
 MPA2_taxID <- sapply(MPA2_120v_names$V1, 
                     function(x) get_uid(x, key = "8f5a7ee70253e037c5641bab48b0d6d74908", 
-                                        ask = T)[1], USE.NAMES = F, simplify = "vector")
+                                        ask = F)[1], USE.NAMES = F, simplify = "vector")
 Check <- which(is.na(MPA2_taxID))
 
 
@@ -56,10 +56,23 @@ if(!(length(Check) < 1)){
 
                 print(To_resolve$gnr[, 3])
 
-                Row_selection <- readline(prompt = "Type the number of the row with the name you want to use ")
-                MPA2_120v_names$V1[Check[counter]] <- To_resolve$gnr[Row_selection, 3]
+                # Row_selection <- readine(prompt = "Type the number of the row with the name you want to use ")
+
+                cat("Type the number of the row with the name you want to use ")
+                Row_selection <- readLines(file("stdin"), n = 1)
+                Row_selection <- as.numeric(Row_selection)
+                # if(interactive()){
+                #         Row_selection <- 
+                #         readline(prompt = "Type the number of the row with the name you want to use ")
+                # }
+
+                MPA2_120v_names$V1[Check[counter]] <- To_resolve$gnr[Row_selection, 3][[1]]
                 MPA2_taxID[Check[counter]] <- get_uid(MPA2_120v_names$V1[Check[counter]], 
                                                     key = "8f5a7ee70253e037c5641bab48b0d6d74908")[1]
+                # if(MPA2_taxID[Check[counter]] == NA){
+                #        MPA2_taxID[Check[counter]] <- get_uid(MPA2_taxID[Check[counter]], 
+                #                                                 key = "8f5a7ee70253e037c5641bab48b0d6d74908", ask = T)[1]
+                # }
 
                 counter <- counter + 1
 
