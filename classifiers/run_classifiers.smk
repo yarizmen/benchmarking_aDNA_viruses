@@ -118,7 +118,7 @@ rule reads_per_taxon_Kraken2:
         '''
         set +e
 
-        grep '^C' {input} | cut -f3 | egrep -o '\(.+\)' | egrep -o '[0-9]+' | sort | uniq -c | \
+        grep '^C' {input} | cut -f3 | grep -oP '\(taxid \d+\)' | egrep -o '[0-9]+' | sort | uniq -c | \
         awk '{{print $1"\t"$2}}' > {output}
 
         exitcode=${{PIPESTATUS[0]}}
