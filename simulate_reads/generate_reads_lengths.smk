@@ -1,6 +1,6 @@
 # Generate simulated reads from a given sample
 
-configfile: 'config_generate_reads.yaml'
+configfile: 'config_generate_reads_length.yaml'
 
 rule all:
     input:
