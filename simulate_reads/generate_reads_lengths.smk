@@ -16,7 +16,8 @@ rule run_ART:
         seq_technology = config['seq_technology'],
         length = config['length'],
         coverage = config['coverage'],
-        prefix = "samples/fastq_files/{fasta}"
+        prefix = "samples/fastq_files/{fasta}",
+        seed = config['seed']
     resources:
         memory = 8000
     log:
@@ -26,7 +27,7 @@ rule run_ART:
         module add Phylogeny/art/2.5.8;
 
         art_illumina -ss {params.seq_technology} -i {input} -l {params.length} -f {params.coverage}\
-        -o {params.prefix}
+        -rs {params.seed} -o {params.prefix}
         '''
 
 rule gzip_fastq:
