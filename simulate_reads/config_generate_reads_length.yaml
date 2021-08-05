@@ -6,3 +6,4 @@ source_fastas: ['hg19']
 seq_technology: 'HS25'
 length: 60
 coverage: 10
+seed: 5
