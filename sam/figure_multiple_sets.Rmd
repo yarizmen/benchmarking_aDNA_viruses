@@ -1,0 +1,795 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+## get data
+```{r}
+library(tidyr)
+library(data.table)
+
+compute_statistics2 <- function(classifier, path2data, length) {
+  raw_numbers <- fread(file = paste0(path2data, length, "/", classifier, "_120v_RawNumbers.txt"))
+  raw_numbers$unclassified <- raw_numbers[, 100 - (100 * class/TotalSimReads)]
+  raw_numbers$correct_species <- raw_numbers[, 100 * Correct_Sp/TotalSimReads]
+  raw_numbers$correct_higher <- raw_numbers[, 100 * Correct_HT/TotalSimReads]
+  raw_numbers$incorrect <- raw_numbers[, 100 * Incorrect/TotalSimReads]
+  raw_numbers$classifier <- classifier
+  raw_numbers$length <- length
+  return(raw_numbers)
+}
+
+## extra taxa
+get_detected_virsues <- function(classifier, path2data, length) {
+  raw_numbers <- fread(file = paste0(path2data, length, "/", classifier, "_120v_RawNumbers.txt"))
+  
+  reported_virus <- fread(file = paste0(path2data, length, "/Reported_virus_", 
+                                        classifier, ".txt"), 
+                          header = F, select = c(1))
+  
+  identified <- raw_numbers[, sum(Correct_Sp != 0)]
+  extra_taxa <- reported_virus[1, V1] - identified
+  
+  return(data.table(classifier, length, identified, extra_taxa))
+}
+
+## get multiple stats
+compute_statistics2.multiple <- function(classifiers, lengths, path2data){
+  m <- NULL
+  for(soft in classifiers){
+    for(l in lengths){
+      m <- rbind(m, compute_statistics2(soft, path2data, l))
+    }
+  }
+  m$classifier <- factor(m$classifier, levels=classifiers)
+  m
+}
+
+## get multiple extra taxa
+get_detected_virsues.multiple <- function(classifiers, lengths, path2data){
+  m <- NULL
+  for(soft in classifiers){
+    for(l in lengths){
+      m <- rbind(m, get_detected_virsues(soft, path2data, l))
+    }
+  }
+  m$classifier <- factor(m$classifier, levels=classifiers)
+  m
+}
+
+## get all correctly detected viruses
+get_detected_virsues.multiple2 <- function(classifiers, lengths, path2data){
+  m <- NULL
+  for(soft in classifiers){
+    for(l in lengths){
+      tmp <- fread(file = paste0(path2data, l, "/", soft, "_120v_RawNumbers.txt"))
+      tmp$classifier <- soft
+      tmp$length <- l
+      m <- rbind(m, tmp)
+    }
+  }
+  m$classifier <- factor(m$classifier, levels=classifiers)
+  m
+}
+
+
+```
+
+## get extra taxa
+```{r}
+
+## 1. Number of counts (how many reads were assigned to “x” taxa)
+## 2. taxID
+## 3. taxID (as a double-check and because some taxIDs are deprecated)
+## 4. Taxa name
+## 5. Taxa rank
+## 6. Classification: is it correct at species, correct at higher or incorrect?
+## 7. How many taxa far away from the correct one? If it’s correct at species level this number is 0, and if it’s incorrect it is also 0.
+
+get.extra_taxa <- function(classifiers, path2data, lengths){
+  library(data.table)
+  library(ggplot2)
+  
+  
+  classifiers <- c("Centrifuge", "Kraken2", "DIAMOND", "MetaPhlAn2")
+  cur.length <- 60
+  
+  ## read the files
+  data <-NULL
+  for(i in classifiers){
+    for(l in lengths){
+      files <- list.files(paste0(path2data, l, "/", i), pattern = ".tsv")
+      for(f in files){
+        #print(paste0(path2data, l, "/", i, "/", f))
+        tmp <- fread(paste0(path2data, l, "/", i, "/", f), header = F)
+        if(ncol(tmp) < 7){
+          tmp$V6 <- tmp$V4
+          tmp$V7 <- tmp$V5
+          tmp$V4 <- NaN
+          tmp$V5 <- NaN
+        }
+        tmp$classifier <- i
+        tmp$length <- l
+        tmp$original <- gsub("_Correct_Incorrect.tsv","", f)
+        data <- rbind(data, tmp)
+      }
+    }
+  }
+  colnames(data) <-c('reads','taxID','taxID2','taxName','rank','classification','rankLevel','classifier','length','original' )
+  data$classifier <- factor(data$classifier, levels=classifiers)
+  return(data)
+}
+
+```
+
+## classification figure
+```{r}
+library(ggplot2)
+
+plot.classifciation <- function(data, title, xlab, xbreaks, xlabels, colors, reverse = F){
+  for(i in levels(data$soft)){
+    data$virus[data$soft == i] <- 1:sum(data$soft == i)   
+  }
+  
+  data <- data[,c(1,8,7,6,3,4,5,2)]
+  
+  data$sens <- apply(data[,5:8],1, function(x)return(x[1]/(sum(x))))
+  data$sens2 <- apply(data[,5:8],1, function(x)return((x[1]+x[2])/(sum(x))))
+  data$prec <- apply(data[,5:8],1, function(x)return(x[1]/(sum(x[1:3]))))
+  data$prec2 <- apply(data[,5:8],1, function(x)return((x[1]+x[2])/(sum(x[1:3]))))
+  
+  data <- data[,-(1:2)][, lapply(.SD, mean, na.rm=T), by = c('length', 'soft')]
+  #data <- mm[,list('Correct species' = meansens = mean(sens), sens2 = mean(sens2), 
+  #         prec = mean(prec, na.rm=T), prec2 = mean(prec2, na.rm=T)), by = c('length', 'soft')]
+  
+  data <- data[,1:6]
+  
+  data <- data.table(reshape2::melt(data, id.vars = 1:2))
+  colnames(data)[3:4] <- c("category", "props")
+  
+  
+  d <-data
+  d$category <- factor(d$category, levels=rev(levels(d$category)))
+  o3 <- ggplot(d, aes(x=length, y=props)) +
+    geom_area(aes(fill = category)) +
+    theme_classic() +
+    scale_fill_manual(values = rev(colors)) +
+    ggtitle(title) +
+    facet_grid(vars(soft)) +
+    ylab("% reads") +
+    guides(fill=guide_legend(title="Classification")) +
+    geom_vline(xintercept=unique(mm$length), color=gray(0.9)) +
+    theme(legend.position=c(0.84, 0.83))
+  
+  if(reverse) {o3 <- o3 + scale_x_reverse(xlab, breaks = xbreaks, labels = xlabels)
+  }else{ o3 <- o3 + scale_x_continuous(xlab, breaks = xbreaks, labels = xlabels)}
+  
+  o3
+}
+```
+
+## classification figure
+```{r}
+library(ggplot2)
+
+get.classifciation <- function(data, title, xlab, xbreaks, xlabels, colors, reverse = F){
+  for(i in levels(data$soft)){
+    data$virus[data$soft == i] <- 1:sum(data$soft == i)   
+  }
+  
+  data <- data[,c(1,8,7,6,3,4,5,2)]
+  
+  data$sens <- apply(data[,5:8],1, function(x)return(x[1]/(sum(x))))
+  data$sens2 <- apply(data[,5:8],1, function(x)return((x[1]+x[2])/(sum(x))))
+  data$prec <- apply(data[,5:8],1, function(x)return(x[1]/(sum(x[1:3]))))
+  data$prec2 <- apply(data[,5:8],1, function(x)return((x[1]+x[2])/(sum(x[1:3]))))
+  
+  data <- data[,-(1:2)][, lapply(.SD, mean, na.rm=T), by = c('length', 'soft')]
+  #data <- mm[,list('Correct species' = meansens = mean(sens), sens2 = mean(sens2), 
+  #         prec = mean(prec, na.rm=T), prec2 = mean(prec2, na.rm=T)), by = c('length', 'soft')]
+  
+  data <- data[,1:6]
+  
+  data <- data.table(reshape2::melt(data, id.vars = 1:2))
+  colnames(data)[3:4] <- c("category", "props")
+  
+  
+  d <-data
+  d$category <- factor(d$category, levels=rev(levels(d$category)))
+  d
+}
+```
+## classification figure
+```{r}
+library(ggplot2)
+
+plot.classifciation2 <- function(data, filter, title, xlab, xbreaks, xlabels, colors, reverse = F){
+  for(i in levels(data$soft)){
+    data$virus[data$soft == i] <- 1:sum(data$soft == i)   
+  }
+  
+  data <- data[,c(1,8,7,6,3,4,5,2)]
+  
+  data$sens <- apply(data[,5:8],1, function(x)return(x[1]/(sum(x))))
+  data$sens2 <- apply(data[,5:8],1, function(x)return((x[1]+x[2])/(sum(x))))
+  data$prec <- apply(data[,5:8],1, function(x)return(x[1]/(sum(x[1:3]))))
+  data$prec2 <- apply(data[,5:8],1, function(x)return((x[1]+x[2])/(sum(x[1:3]))))
+  
+  data <- data[,-(1:2)][, lapply(.SD, mean, na.rm=T), by = c('length', 'soft')]
+  #data <- mm[,list('Correct species' = meansens = mean(sens), sens2 = mean(sens2), 
+  #         prec = mean(prec, na.rm=T), prec2 = mean(prec2, na.rm=T)), by = c('length', 'soft')]
+  
+  data <- data[,1:6]
+  
+  data <- data.table(reshape2::melt(data, id.vars = 1:2))
+  colnames(data)[3:4] <- c("category", "props")
+  
+  
+  d <-data[data$category == filter,]
+  
+  o3 <-ggplot(d, aes(x=length, y=props, group=soft, color = soft)) +
+    geom_line(size=1) +
+    theme_classic() +
+    scale_color_manual(values = colors) +
+    ggtitle(title) +
+    ylab("% reads") +
+    guides(fill=guide_legend(title="Classification")) +
+    geom_vline(xintercept=unique(mm$length), color=gray(0.9)) +
+    theme(legend.position = "none") 
+    #theme(legend.position=c(0.84, 0.83))
+  
+  if(reverse) {o3 <- o3 + scale_x_reverse(xlab, breaks = xbreaks, labels = xlabels)
+  }else{ o3 <- o3 + scale_x_continuous(xlab, breaks = xbreaks, labels = xlabels)}
+  
+  o3
+}
+```
+
+## get classification figure data
+```{r}
+get.classifciation3 <- function(data){
+  for(i in levels(data$soft)){
+    data$virus[data$soft == i] <- 1:sum(data$soft == i)   
+  }
+  
+  data <- data[,c(1,8,7,6,3,4,5,2)]
+  
+  data$sens <- apply(data[,5:8],1, function(x)return(x[1]/(sum(x))))
+  data$sens2 <- apply(data[,5:8],1, function(x)return((x[1]+x[2])/(sum(x))))
+  data$prec <- apply(data[,5:8],1, function(x)return(x[1]/(sum(x[1:3]))))
+  data$prec2 <- apply(data[,5:8],1, function(x)return((x[1]+x[2])/(sum(x[1:3]))))
+  
+  data <- data[,-(1:2)][, lapply(.SD, mean, na.rm=T), by = c('length', 'soft')]
+  #data <- mm[,list('Correct species' = meansens = mean(sens), sens2 = mean(sens2), 
+  #         prec = mean(prec, na.rm=T), prec2 = mean(prec2, na.rm=T)), by = c('length', 'soft')]
+  
+  data <- data[,1:6]
+  
+  data <- data.table(reshape2::melt(data, id.vars = 1:2))
+  colnames(data)[3:4] <- c("category", "props")
+
+  
+  data
+}
+```
+
+## sensitivity figure
+```{r}
+
+plot.sensitivity <- function(data, title, xlab, xbreaks, xlabels, colors, default = NaN, reverse = F){
+
+  for(i in levels(data$soft)){
+    data$virus[data$soft == i] <- 1:sum(data$soft == i)   
+  }
+  
+  data <- data[,c(1,8,7,6,3,4,5,2)]
+  
+  data$sens <- apply(data[,5:8],1, function(x)return(x[1]/(sum(x))))
+  data$sens2 <- apply(data[,5:8],1, function(x)return((x[1]+x[2])/(sum(x))))
+
+  data <- data[,-(1:2)][, lapply(.SD, mean, na.rm=T), by = c('length', 'soft')]
+  
+  data <- data.table(reshape2::melt(data, id.vars = 1:2))
+  colnames(data)[3:4] <- c("category", "props")
+  
+  
+  d1 <- merge(data[data$category == "sens",-3], data[data$category == "sens2", -3], by=c('length','soft'))
+  o1a <- ggplot(d1, aes(x=length, color = soft)) +
+    geom_line(aes(y = 100*props.x), size = 1) +
+    geom_line(aes(y = 100*props.y), linetype="dashed", size = 1) +
+    theme_classic() +
+    ylab("% (correct / all reads)") +
+    scale_color_manual(values = colors) +
+    ggtitle(title) +
+    guides(color=guide_legend(title="Classifier")) +
+    theme(legend.position = "none",
+          panel.grid.major = element_line()) +
+    ylim(0,100) 
+  
+  if(!is.na(default)) o1a <- o1a + geom_vline(xintercept = default, linetype = "dashed")
+ 
+  if(reverse) {o1a <- o1a + scale_x_reverse(xlab, breaks = xbreaks, labels = xlabels)
+  }else{ o1a <- o1a + scale_x_continuous(xlab, breaks = xbreaks, labels = xlabels)}
+
+  o1a
+}
+```
+
+## precision figure
+```{r}
+
+plot.precision <- function(data, title, xlab, xbreaks, xlabels, colors, default = NaN, reverse = F){
+
+  for(i in levels(data$soft)){
+    data$virus[data$soft == i] <- 1:sum(data$soft == i)   
+  }
+  
+  data <- data[,c(1,8,7,6,3,4,5,2)]
+  
+  data$prec <- apply(data[,5:8],1, function(x)return(x[1]/(sum(x[1:3]))))
+  data$prec2 <- apply(data[,5:8],1, function(x)return((x[1]+x[2])/(sum(x[1:3]))))
+  
+  data <- data[,-(1:2)][, lapply(.SD, mean, na.rm=T), by = c('length', 'soft')]
+  
+  data <- data.table(reshape2::melt(data, id.vars = 1:2))
+  colnames(data)[3:4] <- c("category", "props")
+  
+  
+  d1 <- merge(data[data$category == "prec",-3], data[data$category == "prec2", -3], by=c('length','soft'))
+  o1a <- ggplot(d1, aes(x=length, color = soft)) +
+    geom_line(aes(y = 100*props.x, linetype="1"), size = 1) +
+    geom_line(aes(y = 100*props.y, linetype="2"), size = 1) +
+    theme_classic() +
+    ylab("% (correct / classified reads)") +
+    scale_color_manual(values = colors) +
+    ggtitle(title) +
+    guides(color=guide_legend(title="Classifier")) +
+    scale_linetype_discrete(name = "Considered correct", labels = c("species", "species & higher")) +
+    theme(legend.position = "none") +
+    ylim(0,100) +
+    theme(legend.position=c(0.68, 0.25),
+          legend.box = "horizontal",
+          panel.grid.major = element_line())
+ 
+  if(!is.na(default)) o1a <- o1a + geom_vline(xintercept = default, linetype = "dashed")
+
+    if(reverse) {o1a <- o1a + scale_x_reverse(xlab, breaks = xbreaks, labels = xlabels)
+  }else{ o1a <- o1a + scale_x_continuous(xlab, breaks = xbreaks, labels = xlabels)}
+
+  o1a
+}
+
+```
+
+
+## detected virus
+```{r}
+plot.detected_viruses <- function(data, title, xlab, xbreaks, xlabels, colors, default = NaN, reverse = F){
+
+o6 <- ggplot(data, aes(x = length, y = identified, color = classifier)) +
+  geom_line(size = 1) +
+  geom_hline(yintercept=120, linetype="dashed") +
+  geom_text(aes(Inf, 120, label = "120 correct viruses", vjust = -0.7, hjust = 1), color = "black") +
+  theme_classic() +
+  scale_color_manual(values = colors) +
+  guides(color=guide_legend(title="Classifier")) +
+  ggtitle(title) +
+  ylim(0, 122) +
+  ylab("Total number of correctly detected viruses") +
+  theme(legend.position = "none",
+          panel.grid.major = element_line())
+
+  if(!is.na(default)) o6 <- o6 + geom_vline(xintercept = default, linetype = "dashed")
+
+    if(reverse) {o6 <- o6 + scale_x_reverse(xlab, breaks = xbreaks, labels = xlabels)
+  }else{ o6 <- o6 + scale_x_continuous(xlab, breaks = xbreaks, labels = xlabels)}
+
+o6
+}
+
+```
+
+## extra taxa
+```{r}
+plot.extra_viruses <- function(data, title, xlab, xbreaks, xlabels, colors, default = NaN, reverse = F){
+  d <- data[data$classification == "Incorrect", list('extra_taxa' = .N), by = c('classifier','original','length')]
+  d <- d[,list('extra_taxa' = mean(extra_taxa)), by = c('classifier','length')]
+  
+  ## replace missing values with 0
+  for(c in unique(d$classifier)){
+    for(l in unique(d$length)){
+      if(length(d$length[d$classifier == c & d$length == l]) == 0){
+        d <- rbind(d, list('classifier' = c, 'length' = l, 'extra_taxa' = 0))
+      }
+    }
+  }
+  
+
+  o7 <- ggplot(d, aes(x = length, y = extra_taxa, color = classifier)) +
+    geom_line(size = 1) +
+    scale_color_manual(values = colors) +
+    theme_classic()+
+    guides(color=guide_legend(title="Classifier")) +
+    ggtitle(title) +
+    ylim(0, max(d$extra_taxa)) +
+    ylab("Mean number of spurious extra taxa") +
+    theme(legend.position = "none",
+          panel.grid.major = element_line())
+  
+  if(!is.na(default)) o7 <- o7 + geom_vline(xintercept = default, linetype = "dashed")
+
+    if(reverse) {o7 <- o7 + scale_x_reverse(xlab, breaks = xbreaks, labels = xlabels)
+  }else{ o7 <- o7 + scale_x_continuous(xlab, breaks = xbreaks, labels = xlabels)}
+  
+  o7
+}
+# plot.extra_viruses(extra2, "D. Mean number of spurious extra taxa", xlab, xbreaks, xlabels, colours, 1)
+```
+
+## generate pdf
+```{r}
+generate.pdf <- function(a1, a2, a3, a4, b, c, d, e, file){
+  library(gridExtra)
+  library(grid)
+  
+  lay <- rbind(c(1,5),
+               c(2,6),
+               c(3,7),
+               c(4,8))
+  grob <- grid.arrange(grobs=list(a1, a2, a3, a4, b, c, d, e), layout_matrix=lay)   
+  
+  ggsave(file, width = 210, height = 297*2/3, scale=1.8, units = "mm", grob)
+}
+ 
+```
+
+## generate pdf 2
+```{r}
+generate.pdf2 <- function(b, c, d, e, file){
+  library(gridExtra)
+  library(grid)
+  
+  lay <- rbind(c(1,2),
+               c(3,4))
+  grob <- grid.arrange(grobs=list(b, c, d, e), layout_matrix=lay)   
+  
+  ggsave(file, width = 297, height = 210*3/3, scale=1, units = "mm", grob)
+}
+ 
+```
+
+## length
+```{r}
+## get data
+path2data <- "/Users/sneuensc/Sapfo/virome_yami/length/length_"
+classifiers <- c("Centrifuge", "Kraken2", "DIAMOND", "MetaPhlAn2")
+lengths <- c(30, 40, 50, 60, 90, 120, 150)
+lengths.1 <- lengths
+
+m <- compute_statistics2.multiple(classifiers, lengths, path2data)
+extra1 <- get_detected_virsues.multiple(classifiers, lengths, path2data)
+extra2 <- get.extra_taxa(classifiers, path2data, lengths)
+
+### tweak data
+#######################################################################
+mm <-m[, c(3,10:15)]
+colnames(mm) <- c("taxID","Unclassified","Correct species","Correct higher","Incorrect", "soft","length")
+mm$soft <- factor(mm$soft, levels=classifiers)
+
+xbreaks <- unique(mm$length)
+xlabels <- unique(mm$length)
+
+## generate plots
+#######################################################################
+xlab = "read length in bp"
+
+colorcillos <- c(rgb(0, 158, 115, maxColorValue = 255),
+                   rgb(181, 230, 0, maxColorValue = 255),
+                   rgb(243, 155, 0, maxColorValue = 255),
+                   rgb(213, 213, 213, maxColorValue = 255))
+
+colours <- c( "#56B4E9","#0072B2", "#D55E00", "#CC79A7")
+
+A.length <- get.classifciation(mm, "A. length", xlab, xbreaks, xlabels, colorcillos)
+A1.length <- plot.classifciation(mm, "A. length", xlab, xbreaks, xlabels, colorcillos)
+
+class.length <- get.classifciation3(mm)
+
+a <- plot.sensitivity(mm, "A. Mean sensitivity", xlab, xbreaks, xlabels, colours, 60)
+b <- plot.precision(mm, "B. Mean precision", xlab, xbreaks, xlabels, colours, 60)
+c <- plot.detected_viruses(extra1, "C. Total number of correctly detected viruses", xlab, xbreaks, xlabels, colours, 60)
+d <- plot.extra_viruses(extra2, "D. Mean number of spurious extra taxa", xlab, xbreaks, xlabels, colours, 60)
+
+## generate pdf
+#######################################################################
+file <- "/Users/sneuensc/Dropbox (popgen)/Virome/PLoS_ONE_virome/sam/figure_read_length_wTitles3.pdf"
+generate.pdf2(a, b, c, d, file)
+
+```
+## deamination
+```{r}
+## get data
+path2data <- "/Users/sneuensc/Sapfo/virome_yami/deamination/Deam_singlstr_"
+classifiers <- c("Centrifuge", "Kraken2", "DIAMOND", "MetaPhlAn2")
+lengths <- c('0', '05', '1', '15', '2', '25', '3', '35', '4', '45', '5')
+lengths.2 <- lengths
+
+m <- compute_statistics2.multiple(classifiers, lengths, path2data)
+extra1 <- get_detected_virsues.multiple(classifiers, lengths, path2data)
+extra2 <- get.extra_taxa(classifiers, path2data, lengths)
+
+m$length <- as.numeric(paste0("0.", m$length))
+extra1$length <- as.numeric(paste0("0.", extra1$length))
+extra2$length <- as.numeric(paste0("0.", extra2$length))
+
+## tweak data
+#######################################################################
+mm <-m[, c(3,10:15)]
+colnames(mm) <- c("taxID","Unclassified","Correct species","Correct higher","Incorrect", "soft","length")
+mm$soft <- factor(mm$soft, levels=classifiers)
+
+xbreaks <- unique(mm$length)
+xlabels <- unique(mm$length)
+
+## generate plots
+#######################################################################
+xlab = "single-stranded probability of deamination"
+
+colorcillos <- c(rgb(0, 158, 115, maxColorValue = 255),
+                   rgb(181, 230, 0, maxColorValue = 255),
+                   rgb(243, 155, 0, maxColorValue = 255),
+                   rgb(213, 213, 213, maxColorValue = 255))
+
+colours <- c( "#56B4E9","#0072B2", "#D55E00", "#CC79A7")
+
+A.deamination <- get.classifciation(mm, "B. deamination", xlab, xbreaks, xlabels, colorcillos)
+A1.deamination <- plot.classifciation(mm, "B. deamination", xlab, xbreaks, xlabels, colorcillos)
+
+class.deaminatiomn <- get.classifciation3(mm)
+
+a <- plot.sensitivity(mm, "A. Mean sensitivity", xlab, xbreaks, xlabels, colours)
+b <- plot.precision(mm, "B. Mean precision", xlab, xbreaks, xlabels, colours)
+c <- plot.detected_viruses(extra1, "C. Total number of correctly detected viruses", xlab, xbreaks, xlabels, colours)
+d <- plot.extra_viruses(extra2, "D. Mean number of spurious extra taxa", xlab, xbreaks, xlabels, colours)
+
+## generate pdf
+#######################################################################
+file <- "/Users/sneuensc/Dropbox (popgen)/Virome/PLoS_ONE_virome/sam/figure_deamination_wTitles3.pdf"
+generate.pdf2(a, b, c, d, file)
+
+```
+
+## seq error (times substitutions ordered)
+```{r}
+## get data
+path2data <- "/Users/sneuensc/Sapfo/virome_yami/seq_error/SeqErr_neg_"
+classifiers <- c("Centrifuge", "Kraken2", "DIAMOND", "MetaPhlAn2")
+lengths <- c(0, 1, 3, 5, 7, 9, 11, 13, 15)
+lengths <- c(0, 1, 3, 5, 7, 9, 11)
+lengths.4 <- lengths
+
+m <- compute_statistics2.multiple(classifiers, lengths, path2data)
+extra1 <- get_detected_virsues.multiple(classifiers, lengths, path2data)
+extra2 <- get.extra_taxa(classifiers, path2data, lengths)
+m$length <- -1 * m$length
+extra1$length <- -1 * extra1$length
+extra2$length <- -1 * extra2$length
+
+## tweak data
+#######################################################################
+mm <-m[, c(3,10:15)]
+colnames(mm) <- c("taxID","Unclassified","Correct species","Correct higher","Incorrect", "soft","length")
+mm$soft <- factor(mm$soft, levels=classifiers)
+
+extra1$classifier <- factor(extra1$classifier, levels=classifiers)
+extra2$classifier <- factor(extra2$classifier, levels=classifiers)
+
+to.error <- function(x)return(round(1/(10^(x/10)),1))
+
+xlabels <- paste0(to.error(unique(mm$length)) , " (", unique(mm$length), ")")
+#xlabels[1:5] <- gsub(" ", "\n", xlabels[1:5])
+xlabels[c(2)] <- ""
+mm$length <- to.error(mm$length)
+extra1$length <- to.error(extra1$length)
+extra2$length <- to.error(extra2$length)
+
+xbreaks <- unique(mm$length)
+
+## generate plots
+#######################################################################
+xlab = "fold increase of substitutions (qShift)"
+
+colorcillos <- c(rgb(0, 158, 115, maxColorValue = 255),
+                   rgb(181, 230, 0, maxColorValue = 255),
+                   rgb(243, 155, 0, maxColorValue = 255),
+                   rgb(213, 213, 213, maxColorValue = 255))
+
+colours <- c( "#56B4E9","#0072B2", "#D55E00", "#CC79A7")
+
+A.error2 <- get.classifciation(mm, "C. sequencing error", xlab, xbreaks, xlabels, colorcillos, reverse = F)
+A1.error2 <- plot.classifciation(mm, "C. sequencing error", xlab, xbreaks, xlabels, colorcillos, reverse = F)
+
+class.error2<- get.classifciation3(mm)
+
+
+a <- plot.sensitivity(mm, "A. Mean sensitivity", xlab, xbreaks, xlabels, colours, 1)
+b <- plot.precision(mm, "B. Mean precision", xlab, xbreaks, xlabels, colours, 1)
+c <- plot.detected_viruses(extra1, "C. Total number of correctly detected viruses", xlab, xbreaks, xlabels, colours, 1)
+d <- plot.extra_viruses(extra2, "D. Mean number of spurious extra taxa", xlab, xbreaks, xlabels, colours, 1)
+
+## generate pdf
+#######################################################################
+file <- "/Users/sneuensc/Dropbox (popgen)/Virome/PLoS_ONE_virome/sam/figure_seq_error2_wTitles4.pdf"
+generate.pdf2(a, b, c, d, file)
+
+
+
+## which virsues are not detected for qShift of -1 and -2?
+# ww <- get_detected_virsues.multiple2(classifiers, lengths, path2data)
+# ww <- ww[ww$Correct_Sp>0,]
+# ww <- ww[ww$classifier != "MetaPhlAn2",]
+# 
+# 
+# a <- table(ww$GenBankID)
+# a <- a[a != 21]
+# 
+# ww[ww$GenBankID == names(a)[1],]
+# 
+# 
+# ww[,list('N' = .N), by = c("classifier", "length")]
+
+```
+
+## generate the supplement overall classification plot
+```{r}
+A.length$group <- "length"
+A.deamination$group <- "deamination"
+A.error2$group <- "sequencing error"
+d <- rbind(A.length, A.deamination, A.error2)
+
+to.error <- function(x)return(round(1/(10^(x/10)),1))
+
+llines <- data.frame(value = c(lengths.1, 
+                               as.numeric(paste0("0.", lengths.2)),
+                               to.error(-1 * lengths.4)), 
+                     group = c(rep('length', length(lengths.1)),
+                               rep('deamination', length(lengths.2)),
+                               rep('sequencing error', length(lengths.4))))
+
+count <- 0
+breaks_fun <- function(x) {
+  count <- count + 1L
+  switch(count,
+    as.numeric(paste0("0.", lengths.2)),
+    lengths.1,
+    to.error(-1 * lengths.3)
+  )
+}
+
+
+colorcillos <- c(rgb(0, 158, 115, maxColorValue = 255),
+                   rgb(181, 230, 0, maxColorValue = 255),
+                   rgb(243, 155, 0, maxColorValue = 255),
+                   rgb(213, 213, 213, maxColorValue = 255))
+
+
+d$category <- factor(d$category, levels=levels(d$category))
+d$group <- factor(d$group, levels=c('length','deamination','sequencing error'))
+llines$group <- factor(llines$group, levels=c('length','deamination','sequencing error'))
+
+count <- 0
+breaks_fun <- function(x) {
+  count <<- count + 1L
+  if(count == 1) {
+    return(lengths.1)
+  }else if(count == 3){
+    return(as.numeric(paste0("0.", lengths.2)))
+  }else if(count == 5){
+    return(to.error(-1 * lengths.4))
+  }
+  return (500)
+}
+
+#d$props[d$props == 0] <- NaN
+
+
+p1 <- ggplot(d, aes(x=length, y=props)) +
+  geom_area(aes(fill = category)) +
+  theme_classic() +
+  scale_fill_manual(values = rev(colorcillos)) +
+  ggtitle("Classification") +
+  facet_grid(rows=vars(soft), cols=vars(group), scales="free_x") +
+  ylab("% reads") +
+  xlab(paste0("             read length in bp            ",
+              "                             ",
+              "single-stranded probability of deamination",
+              "                             ",
+              "      fold increase of substitutions      ")) +
+  guides(fill=guide_legend(title="Classification")) +
+  geom_vline(data = llines, aes(xintercept = value), color=gray(0.9)) +
+  #geom_hline(yintercept = c(0,25,50,75,100), color=gray(0.9)) +
+  scale_x_continuous(breaks = breaks_fun) +
+  geom_hline(aes(yintercept=-Inf)) + 
+  geom_vline(aes(xintercept=-Inf)) + 
+  coord_cartesian(clip="off") +
+  theme(legend.position=c(0.92, 0.855),
+        panel.grid.major = element_line(),
+        # legend.title = element_text(size = 11),
+        #legend.text = element_text(size = 5)
+        legend.key.height= unit(0.5, 'cm'),
+        legend.key.width= unit(0.5, 'cm')
+  )
+# p1
+
+file <- "/Users/sneuensc/Dropbox (popgen)/Virome/PLoS_ONE_virome/sam/figure_all_classifiers.pdf"
+ggsave(file, width = 297, height = 210*3/3, scale=1, units = "mm", p1)
+```
+
+## suplement figure with the classifications
+```{r}
+class.length$group <- "length"
+class.deaminatiomn$group <- "deamination"
+class.error2$group <- "sequencing error"
+d <- rbind(class.length, class.deaminatiomn, class.error2)
+
+to.error <- function(x)return(round(1/(10^(x/10)),1))
+
+llines <- data.frame(value = c(lengths.1, 
+                               as.numeric(paste0("0.", lengths.2)),
+                               to.error(-1 * lengths.4)), 
+                     group = c(rep('length', length(lengths.1)),
+                               rep('deamination', length(lengths.2)),
+                               rep('sequencing error', length(lengths.4))))
+
+colours <- c( "#56B4E9","#0072B2", "#D55E00", "#CC79A7")
+
+d$category <- factor(d$category, levels=levels(d$category))
+d$group <- factor(d$group, levels=c('length','deamination','sequencing error'))
+llines$group <- factor(llines$group, levels=c('length','deamination','sequencing error'))
+
+count <- 0
+breaks_fun <- function(x) {
+  count <<- count + 1L
+  if(count == 1) {
+    return(lengths.1)
+  }else if(count == 3){
+    return(as.numeric(paste0("0.", lengths.2)))
+  }else if(count == 5){
+    return(to.error(-1 * lengths.4))
+  }
+  return (500)
+}
+
+
+p1 <- ggplot(d, aes(x=length, y=props, color = soft)) +
+  geom_vline(data = llines, aes(xintercept = value), color=gray(0.9)) +
+  geom_line(size = 1) +
+  theme_classic() +
+  scale_color_manual(values = colours) +
+  ggtitle("Classification") +
+  facet_grid(rows=vars(category), cols=vars(group), scales="free") +
+  #facet_wrap(category~group, scales="free") +
+  ylab("% reads") +
+  xlab(paste0("             read length in bp            ",
+              "                             ",
+              "single-stranded probability of deamination",
+              "                             ",
+              "      fold increase of substitutions      ")) +
+  guides(fill=guide_legend(title="Classification")) +
+  scale_x_continuous(breaks = breaks_fun) +
+  guides(color=guide_legend(title="Classifier")) +
+  theme(legend.position=c(0.27, 0.64)) +
+  geom_hline(aes(yintercept=-Inf)) + 
+  geom_vline(aes(xintercept=-Inf)) + 
+  coord_cartesian(clip="off") +
+  theme(axis.line=element_line(),
+         panel.grid.major = element_line(),
+        # legend.title = element_text(size = 11),
+        #legend.text = element_text(size = 5)
+        legend.key.height= unit(0.5, 'cm'),
+        legend.key.width= unit(0.5, 'cm'))
+#p1
+
+file <- "/Users/sneuensc/Dropbox (popgen)/Virome/PLoS_ONE_virome/sam/figure_all_classification.pdf"
+ggsave(file, width = 297, height = 210*3/3, scale=1, units = "mm", p1)
+
+```

@@ -1,0 +1,1060 @@
+---
+  title: "Classifier centrifuge"
+  output: html_notebook
+---
+  
+## get data
+```{r}
+library(tidyr)
+library(data.table)
+
+compute_statistics2 <- function(classifier, path2data, length) {
+  raw_numbers <- fread(file = paste0(path2data, length, "/", classifier, "_120v_RawNumbers.txt"))
+  raw_numbers$classifier <- classifier
+  raw_numbers$correct_species <- raw_numbers[, 100 * Correct_Sp/TotalSimReads]
+  raw_numbers$correct_higher <- raw_numbers[, 100 * Correct_HT/TotalSimReads]
+  raw_numbers$unclassified <- raw_numbers[, 100 - (100 * class/TotalSimReads)]
+  raw_numbers$incorrect <- raw_numbers[, 100 * Incorrect/TotalSimReads]
+  raw_numbers$length <- length
+  return(raw_numbers)
+}
+
+## extra taxa
+get_detected_virsues <- function(classifier, path2data, length) {
+  raw_numbers <- fread(file = paste0(path2data, length, "/", classifier, "_120v_RawNumbers.txt"))
+  
+  reported_virus <- fread(file = paste0(path2data, length, "/Reported_virus_", 
+                                        classifier, ".txt"), 
+                          header = F, select = c(1))
+  
+  identified <- raw_numbers[, sum(Correct_Sp != 0)]
+  extra_taxa <- reported_virus[1, V1] - identified
+  
+  return(data.table(classifier, length, identified, extra_taxa))
+}
+
+## get multiple stats
+compute_statistics2.multiple <- function(classifiers, lengths, path2data){
+  m <- NULL
+  for(soft in classifiers){
+    for(l in lengths){
+      m <- rbind(m, compute_statistics2(soft, path2data, l))
+    }
+  }
+  m
+}
+
+## get multiple extra taxa
+get_detected_virsues.multiple <- function(classifiers, lengths, path2data){
+  m <- NULL
+  for(soft in classifiers){
+    for(l in lengths){
+      m <- rbind(m, get_detected_virsues(soft, path2data, l))
+    }
+  }
+  m
+}
+
+```  
+## get extra taxa
+```{r}
+
+## 1. Number of counts (how many reads were assigned to “x” taxa)
+## 2. taxID
+## 3. taxID (as a double-check and because some taxIDs are deprecated)
+## 4. Taxa name
+## 5. Taxa rank
+## 6. Classification: is it correct at species, correct at higher or incorrect?
+## 7. How many taxa far away from the correct one? If it’s correct at species level this number is 0, and if it’s incorrect it is also 0.
+
+get.extra_taxa <- function(classifiers, path2data, lengths){
+  library(data.table)
+  library(ggplot2)
+  
+  
+  classifiers <- c("Centrifuge", "Kraken2", "DIAMOND", "MetaPhlAn2")
+  cur.length <- 60
+  
+  ## read the files
+  data <-NULL
+  for(i in classifiers){
+    for(l in lengths){
+      files <- list.files(paste0(path2data, l, "/", i))
+      for(f in files){
+        #print(paste0(path2data, l, "/", i, "/", f))
+        tmp <- fread(paste0(path2data, l, "/", i, "/", f))
+        if(ncol(tmp) < 7){
+          tmp$V6 <- tmp$V4
+          tmp$V7 <- tmp$V5
+          tmp$V4 <- NaN
+          tmp$V5 <- NaN
+        }
+        tmp$classifier <- i
+        tmp$length <- l
+        tmp$original <- gsub("_Correct_Incorrect.tsv","", f)
+        data <- rbind(data, tmp)
+      }
+    }
+  }
+  colnames(data) <-c('reads','taxID','taxID2','taxName','rank','classification','rankLevel','classifier','length','original' )
+  data$classifier <- factor(data$classifier, levels=classifiers)
+  return(data)
+}
+
+```
+## classification per virus
+```{r}
+plot.classification_per_virus <- function(mmm, title, xlab, colors){
+  library(data.table)
+  library(ggplot2)
+  library(reshape2)
+
+  ## ordering following correct species
+  mmm <- mmm[order(mmm$`Correct species`, mmm$`Correct higher`, mmm$Unclassified, mmm$Incorrect, decreasing = T),]
+  
+  data <- data.table(reshape2::melt(mmm, id.vars = c('soft','virus')))
+  colnames(data)[3:4] <- c("category", "props")
+  
+  d <- NULL
+  for(i in levels(data$soft)){
+    sel = data[data$soft == i,]
+    tmp <- sel[sel$category == "Correct species", ]
+    #tmp <- tmp[order(tmp$props, tmp$category, decreasing = T),]
+    ord <- data.frame('virus' = tmp$virus, 'order' = 1:nrow(tmp))
+    
+    d <- rbind(d, merge(sel, ord))
+  }
+  
+  d$class <- "correct species"
+  dd <- d
+  
+  
+  ## ordering following correct species & hihger
+  mmm$correct2 <- mmm$`Correct species` + mmm$`Correct higher`
+  mmm <- mmm[order(mmm$correct2, mmm$`Correct species`, mmm$`Correct higher`, mmm$Unclassified, mmm$Incorrect, decreasing = T),]
+  mmm <- mmm[, -'correct2']
+  
+  ## 
+  data <- data.table(reshape2::melt(mmm, id.vars = c('soft','virus')))
+  colnames(data)[3:4] <- c("category", "props")
+  
+  ## correct species & higher
+  d <- NULL
+  for(i in levels(data$soft)){
+    sel = data[data$soft == i,]
+    tmp <- sel[sel$category == "Correct species", ]
+    tmp$props2 <- sel$props[sel$category == "Correct higher"]
+    #tmp <- tmp[order(tmp$props + tmp$props2, decreasing = T),]
+    ord <- data.frame('virus' = tmp$virus, 'order' = 1:nrow(tmp))
+    
+    d <- rbind(d, merge(sel, ord))
+  }
+  
+  d$class <- "correct species & higher"
+  dd <- rbind(dd, d)
+  dd$class <- factor(dd$class, levels = c("correct species", "correct species & higher"))
+  
+  dd$order <- factor(dd$order, levels=1:120)
+  dd$category <- factor(dd$category, levels=rev(c("Correct species","Correct higher","Incorrect","Unclassified")))
+  
+  dd$props[dd$props==0] <- NaN
+  
+  d1 <- ggplot(dd, aes(color = category, fill = category, x = order, y = props)) +
+    theme_classic() +
+    geom_bar(stat="identity") +
+    scale_fill_manual(values = rev(colors)) +
+    scale_color_manual(values = rev(colors)) +
+    ylab("% reads") +
+    xlab(xlab) +
+    ggtitle(title) +
+    theme(axis.text.x=element_blank(),
+          axis.ticks.x=element_blank(),
+          legend.position = "none") +
+    facet_grid(vars(soft), vars(class))
+  d1
+}
+```
+
+## classification per virus
+```{r}
+plot.classification_per_virus2 <- function(mmm, title, xlab, colors){
+  library(data.table)
+  library(ggplot2)
+  library(reshape2)
+
+  ## ordering following correct species
+  mmm <- mmm[order(mmm$`Correct species`, mmm$`Correct higher`, mmm$Unclassified, mmm$Incorrect, decreasing = T),]
+  
+  data <- data.table(reshape2::melt(mmm, id.vars = c('soft','virus')))
+  colnames(data)[3:4] <- c("category", "props")
+  
+  d <- NULL
+  for(i in levels(data$soft)){
+    sel = data[data$soft == i,]
+    tmp <- sel[sel$category == "Correct species", ]
+    #tmp <- tmp[order(tmp$props, tmp$category, decreasing = T),]
+    ord <- data.frame('virus' = tmp$virus, 'order' = 1:nrow(tmp))
+    
+    d <- rbind(d, merge(sel, ord))
+  }
+  
+  d$class <- "ordered following 'correct species'"
+  dd <- d
+  
+  
+  dd$class <- factor(dd$class, levels = c("ordered following 'correct species'", "ordered following 'correct species & higher'"))
+  
+  #dd$order <- factor(dd$order, levels=1:120)
+  dd$category <- factor(dd$category, levels=rev(c("Correct species","Correct higher","Incorrect","Unclassified")))
+  
+  
+  dd <- dd[order(dd$soft, dd$order),]
+  dd$props[dd$category == "Unclassified"] <- dd$props[dd$category == "Incorrect"]
+  dd$props[dd$category == "Unclassified" & dd$props > 2] <- 2
+  
+  dd$category <- as.character(dd$category)
+  dd$category[dd$category == "Unclassified"] <- "Incorrect trimmed"
+  dd$category <- factor(dd$category, levels=rev(c("Correct species","Correct higher","Incorrect","Incorrect trimmed")))
+ 
+  ggplot(dd, aes(x = order, y = props, color = soft, fill = soft)) +
+    theme_classic() +
+    geom_line(size = 1) +
+    #geom_bar(stat="identity") +
+    scale_fill_manual(values = rev(colors)) +
+    scale_color_manual(values = rev(colors)) +
+    ylab("% reads") +
+    xlab(xlab) +
+    ggtitle(title) +
+    theme(axis.text.x=element_blank(),
+          axis.ticks.x=element_blank()) +
+    facet_grid(vars(category), scales = "free")
+  
+  
+  ww <- mmm[,list(median= median(Incorrect), mean = mean(Incorrect)), by =c("soft")]
+  ww[ww$category == "Incorrect",]
+}
+#plot.classification_per_virus2(mm, 'A. Classification per virus', "viruses (order vary per classifer)", colorcillos)
+```
+
+
+## classification mean
+```{r}
+plot.classification_mean <- function(mmm, title, colors){
+
+  data <- data.table(reshape2::melt(mmm, id.vars = c('soft','virus')))
+  colnames(data)[3:4] <- c("category", "props")
+  
+  ################################################################################################
+  ## mean categories
+  data$category <- factor(data$category, levels=c("Correct species","Correct higher","Incorrect","Unclassified"))
+  
+  d <- data.table(data)[,list(props = mean(props)), by = c('category','soft')]
+  a1 <- ggplot(d, aes(y = props, fill = category, x = soft)) +
+    geom_bar(stat="identity", position="dodge") +
+    scale_fill_manual(values = colors) +
+    scale_color_manual(values = colors) +
+    geom_text(aes(label = sprintf("%.1f", round(props, 1))), 
+              position=position_dodge(width=0.9), hjust=-0.1, cex = 3, angle = 90) +
+    ylab("% reads") +
+    xlab("") +
+    ylim(0,100) +
+    ggtitle(title) +
+    guides(fill=guide_legend(title="Classification")) +
+    theme_classic() +
+    theme(legend.position=c(0.7, 0.79),
+        panel.grid.major.y = element_line())
+  
+  a1
+}
+
+  a <- plot.classification_per_virus(mm, 'A. Classification per virus', "viruses (order vary per classifer)", colorcillos)
+  b <- plot.classification_mean(mm, 'B. Mean classification', colorcillos)
+  
+  lay <- rbind(c(1,2))
+  grob <- grid.arrange(grobs=list(a, b), layout_matrix=lay)   
+  ggsave(gsub(".pdf", "_sup.pdf", file), width = 297, height = 210*2/3, scale=0.9, units = "mm", grob)
+
+```
+## sensitivity per virus
+```{r}
+plot.sensitivity_per_virus <- function(ee, title, xlab, colors){
+
+  ## sensitivity
+  ee$sens <- apply(ee[,3:6],1, function(x)return(x[1]/(sum(x))))
+  ee$sens2 <- apply(ee[,3:6],1, function(x)return((x[1]+x[2])/(sum(x))))
+
+  ## sorting
+  d<-NULL
+  for(i in levels(ee$soft)){
+    d <- rbind(d, data.frame( 'x' = 1:length(ee$sens[ee$soft == i]), soft = i,
+                              'species' = sort(ee$sens[ee$soft == i], decreasing = T, na.last = T),
+                              'species.higher' = sort(ee$sens2[ee$soft == i], decreasing = T, na.last = T)))
+  }
+  d$Classifier <- factor(d$soft, levels=levels(ee$soft))
+  
+  b1 <- ggplot(d, aes(x = x, colour = Classifier)) +
+    theme_classic() +
+    geom_line(aes(y = 100*species, linetype="1"), size = 1) +
+    geom_line(aes(y = 100*species.higher, linetype="2"), size = 1) +
+    ylab("% (correct / all reads)") +
+    xlab(xlab) +
+    scale_color_manual(values = colors) +
+    scale_linetype_discrete(name = "", labels = c("Sensitivity_s", "Sensitivity_s&h")) +
+    xlim(0,120) +
+    ggtitle(title) +
+    theme(legend.position=c(0.13, 0.33))
+  b1
+}
+
+```
+
+
+## sensitivity mean
+```{r} 
+plot.sensitivity_mean <- function(ee, title, colors){
+
+  ## sensitivity
+  ee$sens <- apply(ee[,3:6],1, function(x)return(x[1]/(sum(x))))
+  ee$sens2 <- apply(ee[,3:6],1, function(x)return((x[1]+x[2])/(sum(x))))
+  e <- ee[,list('Sensitivity_s' = 100*mean(sens), 'Sensitivity_s&h' = 100*mean(sens2)), by=soft]
+  
+  d <- reshape::melt(e, id.vars = 1)
+  a3 <- ggplot(d, aes(y = value, fill = variable, x = soft)) +
+    geom_bar(stat="identity", position="dodge") +
+    geom_text(aes(label = round(value,2)), position=position_dodge(width=0.9), vjust=-0.25, cex=3) +
+    ylab("% (correct / all reads)") +
+    xlab("") +
+    ggtitle(title) +
+    guides(fill=guide_legend(title="")) +
+    scale_fill_manual(values = colors) +
+    theme_classic() +
+    theme(legend.position=c(0.85, 0.9))
+  
+  a3
+}
+
+```
+
+## precision per virus
+```{r}
+plot.precision_per_virus <- function(ee, title, xlab, colors){
+
+  ## precision
+  ee$prec <- apply(ee[,3:6],1, function(x)return(x[1]/(sum(x[c(1,2,4)]))))
+  ee$prec2 <- apply(ee[,3:6],1, function(x)return((x[1]+x[2])/(sum(x[c(1,2,4)]))))
+
+  ## sorting
+  d<-NULL
+  for(i in levels(ee$soft)){
+    d <- rbind(d, data.frame( 'x' = 1:length(ee$prec[ee$soft == i]), Classifier = i,
+                              'species' = sort(ee$prec[ee$soft == i], decreasing = T, na.last = T),
+                              'species.higher' = sort(ee$prec2[ee$soft == i], decreasing = T, na.last = T)))
+  }
+  
+  d$Classifier <- factor(d$Classifier, levels=levels(ee$soft))
+  
+  b1 <- ggplot(d, aes(x = x, colour = Classifier)) +
+    theme_classic() +
+    geom_line(aes(y = 100*species, linetype="1"), size = 1) +
+    geom_line(aes(y = 100*species.higher, linetype="2"), size = 1) +
+    ylab("% (correct / classified reads)") +
+    xlab(xlab) +
+    scale_color_manual(values = colors) +
+    scale_linetype_discrete(name = "", labels = c("Precision_s", "Precision_s&h")) +
+    xlim(0,120) +
+    ggtitle(title) +
+    theme(legend.position=c(0.13, 0.33))
+  b1
+}
+
+```
+
+## precision - sensitivity per virus
+```{r}
+plot.sensitivity_precision_per_virus <- function(ee, title, colors){
+
+  ## sensitivity
+  ee$sens <- apply(ee[,3:6],1, function(x)return(x[1]/(sum(x))))
+  ee$sens2 <- apply(ee[,3:6],1, function(x)return((x[1]+x[2])/(sum(x))))
+
+  ## precision
+  ee$prec <- apply(ee[,3:6],1, function(x)return(x[1]/(sum(x[c(1,2,4)]))))
+  ee$prec2 <- apply(ee[,3:6],1, function(x)return((x[1]+x[2])/(sum(x[c(1,2,4)]))))
+
+  e <- ee[,list('Sensitivity_s' = 100*mean(sens), 'Sensitivity_s&h' = 100*mean(sens2),
+                'Precision_s' = 100*mean(prec, na.rm=T), 'Precision_s&h' = 100*mean(prec2, na.rm=T)), by=soft]
+
+  ## sorting
+  d<-NULL
+  for(i in levels(ee$soft)){
+    d <- rbind(d, data.frame( 'x' = 1:length(ee$prec[ee$soft == i]), Classifier = i,
+                              'species' = sort(ee$prec[ee$soft == i], decreasing = T, na.last = T),
+                              'species.higher' = sort(ee$prec2[ee$soft == i], decreasing = T, na.last = T)))
+  }
+  
+  e$Classifier <- factor(e$soft, levels=levels(ee$soft))
+  ee$Classifier <- factor(ee$soft, levels=levels(ee$soft))
+  
+  
+  ggplot(ee, aes(x = sens, y = prec, color = Classifier)) +
+    theme_classic() +
+    geom_point(size = 5) +
+    ylab("Precision") +
+    xlab("Sensitivity") +
+    scale_color_manual(values = colors) +
+    ggtitle(title) +
+    theme(legend.position=c(0.8, 0.33))
+ }
+# plot.sensitivity_precision_per_virus(mm, 'C. Mean sensitivity', colours)
+
+```
+## precision - sensitivity mean
+```{r}
+plot.sensitivity_precision <- function(ee, title, colors){
+
+  ## sensitivity
+  ee$sens <- apply(ee[,3:6],1, function(x)return(x[1]/(sum(x))))
+  ee$sens2 <- apply(ee[,3:6],1, function(x)return((x[1]+x[2])/(sum(x))))
+
+  ## precision
+  ee$prec <- apply(ee[,3:6],1, function(x)return(x[1]/(sum(x[c(1,2,4)]))))
+  ee$prec2 <- apply(ee[,3:6],1, function(x)return((x[1]+x[2])/(sum(x[c(1,2,4)]))))
+
+  e <- rbind(ee[,list('Sensitivity' = 100*mean(sens), 'Precision' = 100*mean(prec, na.rm=T), 'Category' = 'species'), by = soft],
+             ee[,list('Sensitivity' = 100*mean(sens2), 'Precision' = 100*mean(prec2, na.rm=T), 'Category' = 'species & higher'), by=soft])
+
+  e$Classifier <- factor(e$soft, levels=levels(ee$soft))
+
+  ## set the position for the classifer names
+  ee <- data.frame('Classifier' = levels(e$Classifier), 
+                   'x' = (e$Sensitivity[e$Category == "species"] + e$Sensitivity[e$Category == "species & higher"]) / 2,
+                   'y' = (e$Precision[e$Category == "species"] + e$Precision[e$Category == "species & higher"]) / 2,
+                   'Category' = "species")
+  ee$x[ee$Classifier == "MetaPhlAn2"] <- 40               
+  ee$x[ee$Classifier == "Centrifuge"] <- 100               
+  ee$x[ee$Classifier == "Kraken2"] <- 78               
+  ee$x[ee$Classifier == "DIAMOND"] <- 52   
+  
+  ee$y[ee$Classifier == "Centrifuge"] <- 82               
+  ee$y[ee$Classifier == "Kraken2"] <- 82   
+  
+  ## set the position for the values
+  e$x <- e$Sensitivity
+  e$y <- e$Precision
+  e$x[e$Classifier == "MetaPhlAn2"] <- e$x[e$Classifier == "MetaPhlAn2"] - 20              
+  e$x[e$Classifier == "Centrifuge"] <- e$x[e$Classifier == "Centrifuge"] + 2.5              
+  e$x[e$Classifier == "Kraken2"] <- e$x[e$Classifier == "Kraken2"] - 20               
+  e$x[e$Classifier == "DIAMOND"] <- e$x[e$Classifier == "DIAMOND"] - 20  
+  
+  e$x[e$Classifier != "Centrifuge" & e$Category == "species & higher"] <- 
+    e$x[e$Classifier != "Centrifuge" & e$Category == "species & higher"] - 2
+  
+  e$y[e$Classifier != "DIAMOND" & e$Category == "species & higher"] <- 
+    e$y[e$Classifier != "DIAMOND" & e$Category == "species & higher"] + 1
+  e$y[e$Classifier != "DIAMOND" & e$Category == "species"] <- 
+    e$y[e$Classifier != "DIAMOND" & e$Category == "species"] - 1
+
+  e$text <- ifelse(e$Category == "species", 
+                                 paste0("Sensitivity_s: ", round(e$Sensitivity,1), 
+                                        "%\nPrecision_s: ", round(e$Precision,1), "%"),
+                                 paste0("Sensitivity_s&h: ", round(e$Sensitivity,1), 
+                                        "%\nPrecision_s&h: ", round(e$Precision,1), "%"))
+
+  
+  ggplot(e, aes(x = Sensitivity, y = Precision, color = Classifier, shape = Category)) +
+    theme_classic() +
+    geom_point(size = 7) +
+    ylab("Mean precision") +
+    ylim(50,100) +
+    geom_text(aes(x = x, y = y, label = text),
+              hjust = 0, cex=3.5) +
+    geom_text(data = ee, aes(x = x, y = y, label = Classifier), size=8) +
+    scale_color_manual(values = colors) +
+    ggtitle(title) +
+    guides(color=F,
+           shape=guide_legend(title="Considered correct")) +
+    scale_x_continuous("Mean sensitivity", breaks = seq(0,100, 10), labels = seq(0,100, 10), limits = c(0, 100)) +
+    theme(legend.position=c(0.93, 0.17),
+        panel.grid.major = element_line(),
+        plot.margin=unit(c(5.5, 72, 5.5, 5.5), "points")) +
+    coord_cartesian(clip = "off")
+  
+
+ }
+ # a <- plot.sensitivity_precision(mm, "A. Sensitivity vs. precision", colours)
+ #  b <-plot.detected_viruses(m, "B. Total number of correctly detected viruses", 
+ #                              colorcillos[1], lighten(colorcillos[1], amount = 0.8), c(1,5,10,20,50))
+ #  c <-plot.extra_taxa_mean(extra, "C. Mean number of spurious extra taxa", 
+ #                             colorcillos[3], lighten(colorcillos[3], amount = 0.8), c(1,5,10,20,50))
+ # 
+ #  lay <- rbind(c(1,1),c(2,3))
+ #  grob <- grid.arrange(grobs=list(a, b, c), layout_matrix=lay)   
+ #  ggsave(gsub(".pdf", "_details3.pdf", file), width = 297, height = 297, scale=0.8, units = "mm", grob)
+
+
+```
+## precision - sensitivity mean
+```{r}
+plot.sensitivity_precision2 <- function(ee, title, colors, selection){
+
+  ## sensitivity
+  ee$sens <- apply(ee[,3:6],1, function(x)return(x[1]/(sum(x))))
+  ee$sens2 <- apply(ee[,3:6],1, function(x)return((x[1]+x[2])/(sum(x))))
+
+  ## precision
+  ee$prec <- apply(ee[,3:6],1, function(x)return(x[1]/(sum(x[c(1,2,4)]))))
+  ee$prec2 <- apply(ee[,3:6],1, function(x)return((x[1]+x[2])/(sum(x[c(1,2,4)]))))
+
+  e <- rbind(ee[,list('Sensitivity' = 100*mean(sens), 'Precision' = 100*mean(prec, na.rm=T), 'Category' = 'species'), by = soft],
+             ee[,list('Sensitivity' = 100*mean(sens2), 'Precision' = 100*mean(prec2, na.rm=T), 'Category' = 'species & higher'), by=soft])
+
+  e$Classifier <- factor(e$soft, levels=levels(ee$soft))
+  #e$Category <- factor(e$Category, levels=levels(e$Category))
+  
+  ggplot(e[e$Category  == selection,], aes(x = Sensitivity, y = Precision, color = Classifier)) +
+    theme_classic() +
+    geom_point(size = 7) +
+    #scale_shape_manual(values = c(21,23))+
+    ylab("Mean precision") +
+    xlab("Mean sensitivity") +
+    xlim(0,100) +
+    ylim(0,100) +
+    scale_color_manual(values = colors) +
+    #scale_fill_discrete(values = colors) +
+    ggtitle(title) +
+    guides(fill=guide_legend(title="Classifier")) +
+    theme(legend.position=c(0.8, 0.33),
+        panel.grid.major = element_line())
+  
+
+ }
+#plot.sensitivity_precision2(mm, 'A. Mean sensitivity vs. mean precision', colours, 'species')
+
+```
+
+## precision mean
+```{r} 
+plot.precision_mean <- function(ee, title, colors){
+
+  ## precision
+  ee$prec <- apply(ee[,3:6],1, function(x)return(x[1]/(sum(x[c(1,2,4)]))))
+  ee$prec2 <- apply(ee[,3:6],1, function(x)return((x[1]+x[2])/(sum(x[c(1,2,4)]))))
+  e <- ee[,list('Precision_s' = 100*mean(prec, na.rm=T), 'Precision_s&h' = 100*mean(prec2, na.rm=T)), by=soft]
+  
+  d <- reshape::melt(e, id.vars = 1)
+
+  a3 <- ggplot(d, aes(y = value, fill = variable, x = soft)) +
+    geom_bar(stat="identity", position="dodge") +
+    geom_text(aes(label = round(value,2)), position=position_dodge(width=0.9), vjust=-0.25, cex=3) +
+    ylab("% (correct / classified reads)") +
+    xlab("") +
+    ggtitle(title) +
+    guides(fill=guide_legend(title="")) +
+    scale_fill_manual(values = colors) +
+    theme_classic() +
+    theme(legend.position=c(0.85, 0.9))
+  
+  a3
+}
+
+```
+
+## detected virus
+```{r, eval=F}
+## get data
+plot.detected_viruses <- function(data, title, color1, color2, thres){
+
+  d1 <-NULL
+  for(i in thres){
+    FUN <- function(x)return(sum(x>i))
+    tmp <- data[, list('pres' = FUN(Correct_Sp)), by = c('classifier')]
+    tmp$thres <- paste0(i, " reads")
+    d1 <- rbind(d1, tmp)
+  }
+  d1$thres[d1$thres == "1 reads"] <- "1 read"
+  
+  d1$thres <- factor(d1$thres, levels = unique(d1$thres))
+  d1$classifier <- factor(d1$classifier, levels = levels(data$classifier))
+  
+  o4a <- ggplot(d1, aes(x = classifier, y = pres, fill = thres)) +
+    geom_bar(stat="identity", position = "dodge") +
+    scale_color_manual(values = colours) +
+    theme_classic() +
+    geom_hline(yintercept=120, linetype="dashed") +
+    scale_fill_manual(values = colorRampPalette(c(color1, color2))(length(thres))) +
+    geom_vline(xintercept=unique(extra$length), color=gray(0.9)) +
+    geom_text(aes(Inf, 120, label = "120 simulated viral sequences", vjust = -0.6, hjust = 1)) +
+    guides(color=guide_legend(title="Classifier")) +
+    geom_text(aes(label = pres), position=position_dodge(width=0.9), 
+              vjust=0.5, hjust = 1.2, cex=3, angle = 90, color = "black") +
+    ggtitle(title) +
+    guides(fill=guide_legend(title="Threshold")) +
+    xlab("") +
+    theme(legend.position=c(0.87, 0.7)) +
+    ylab("# viruses detected") #+
+    #theme(legend.position = "none")
+  o4a
+}
+#plot.detected_viruses(m, "B. Total number of detected viruses", 
+#                              colorcillos[1], lighten(colorcillos[1], amount = 0.8), c(1,5,10,20,50))
+
+```
+
+## detected virus
+```{r, eval=F}
+## get data
+plot.detected_viruses2 <- function(data, title, colors, thres){
+
+  d1 <-NULL
+  for(i in 1: length(thres)){
+    FUN <- function(x)return(sum(x>thres[i]))
+    tmp <- data[, list('pres' = FUN(Correct_Sp)), by = c('classifier')]
+    tmp$thres <- paste0(thres[i], " reads")
+    tmp$x <- i
+    d1 <- rbind(d1, tmp)
+  }
+  d1$thres[d1$thres == "1 reads"] <- "1 read"
+  
+  d1$thres <- factor(d1$thres, levels = unique(d1$thres))
+  d1$Classifier <- factor(d1$classifier, levels = levels(data$classifier))
+
+  ggplot(d1, aes(x = x, y = pres, color = Classifier, group = classifier)) +
+    geom_line(size = 1) +
+    geom_point(size = 3) +
+    geom_hline(yintercept=120, linetype="dashed") +
+    geom_text(aes(Inf, 120, label = "120 simulated viral sequences", vjust = -0.6, hjust = 1), color = "black") +
+    scale_color_manual(values = colors) +
+    theme_classic() +    
+    ylim(0, 120) +
+    ggtitle(title) +
+    ylab("# viruses detected") +
+    xlab("Threshold") +
+    scale_x_continuous(breaks = d1$x, labels = d1$thres) +
+    theme(legend.position=c(0.75, 0.6),
+          panel.grid.major = element_line())
+}
+#plot.detected_viruses2(m, "D. Total number of detected viruses", colours, c(1,5,10,20,50))
+```
+
+## extra taxa
+```{r}
+plot.extra_taxa_mean <- function(extra, title, color1, color2, thres){
+  
+  d <- extra[,list('extra_taxa' = .N), by = c('classifier','original')]
+  d <- d[,list('extra_taxa' = mean(extra_taxa)), by = 'classifier']
+  
+  d1 <-NULL
+  for(i in thres){
+    d <- extra[extra$reads >= i, list('extra_taxa' = .N), by = c('classifier','original')]
+    d <- d[,list('extra_taxa' = mean(extra_taxa)), by = 'classifier']
+    d$thres <- paste0(i, " reads")
+    d1 <- rbind(d1, d)
+  }
+  d1$thres[d1$thres == "1 reads"] <- "1 read"
+  d1$thres <- factor(d1$thres, levels = unique(d1$thres))
+  d1$classifier <- factor(d1$classifier, levels = levels(extra$classifier))
+  
+  o5a <- ggplot(d1, aes(x = classifier, y = extra_taxa, fill = thres)) +
+    geom_bar(stat="identity", position = "dodge") +
+    scale_color_manual(values = colours) +
+    theme_classic() +
+    scale_fill_manual(values = colorRampPalette(c(color1, color2))(length(thres))) +
+    geom_vline(xintercept=unique(extra$length), color=gray(0.9)) +
+    #scale_x_continuous("read length in bp", breaks = unique(extra$length)) +
+    guides(color=guide_legend(title="Classifier")) +
+    geom_text(aes(label = round(extra_taxa, 1)), position=position_dodge(width=0.9), 
+              vjust=0.5, hjust = 1.2, cex=3, angle = 90, color = "black") +
+    ggtitle(title) +
+    guides(fill=guide_legend(title="Threshold")) +
+    xlab("") +
+    theme(legend.position=c(0.87, 0.8)) +
+    ylab("Mean number of extra taxa") 
+  o5a
+}
+```
+## extra taxa
+```{r}
+plot.extra_taxa_mean2 <- function(extra, title, colors, thres){
+  
+  d <- extra[,list('extra_taxa' = .N), by = c('classifier','original')]
+  d <- d[,list('extra_taxa' = mean(extra_taxa)), by = 'classifier']
+  
+  d1 <-NULL
+  for(i in 1: length(thres)){
+    d <- extra[extra$reads >= thres[i], list('extra_taxa' = .N), by = c('classifier','original')]
+    d <- d[,list('extra_taxa' = mean(extra_taxa)), by = 'classifier']
+    d$thres <- paste0(thres[i], " reads")
+    d$thres1 <- thres[i]
+    d$x <- i
+    d1 <- rbind(d1, d)
+  }
+  d1$thres[d1$thres == "1 reads"] <- "1 read"
+  d1$thres <- factor(d1$thres, levels = unique(d1$thres))
+  d1$Classifier <- factor(d1$classifier, levels = levels(extra$classifier))
+  
+  o5a <- ggplot(d1, aes(x = x, y = extra_taxa, color = Classifier, group = classifier)) +
+    geom_line(size = 1) +
+    geom_point(size = 3) +
+    scale_color_manual(values = colors) +
+    theme_classic() +    
+    ylim(0, max(d1$extra_taxa)) +
+    ggtitle(title) +
+    ylab("Mean number of extra taxa") +
+    xlab("Threshold") +
+    scale_x_continuous(breaks = d1$x, labels = d1$thres) +
+    theme(legend.position=c(0.75, 0.6),
+          panel.grid.major = element_line())
+  o5a
+}
+# plot.extra_taxa_mean2(extra, "F: Mean number of extra taxa reported", colours,  c(1,5,10,20,50))
+```
+
+## generate pdf
+```{r}
+generate.pdf <- function(a, b, c, d, file){
+  library(gridExtra)
+  library(grid)
+  
+  lay <- rbind(c(1,2),
+               c(3,4))
+  grob <- grid.arrange(grobs=list(a, b, c, d), layout_matrix=lay)   
+  
+  ggsave(file, width = 297, height = 210, scale=1.2, units = "mm", grob)
+}
+
+generate.pdf <- function(a, b, c, d, e, f, file){
+  library(gridExtra)
+  library(grid)
+  
+  lay <- rbind(c(1,2),
+               c(3,4),
+               c(5,6))
+  grob <- grid.arrange(grobs=list(a, b, c, d, e, f), layout_matrix=lay)   
+  
+  ggsave(file, width = 297, height = 297, scale=1.2, units = "mm", grob)
+}
+```
+
+
+
+
+
+## generate the figures and store them to pdf
+```{r}
+generate.full_pdf <- function(m, extra, classifiers, cur.length, file, extra.taxa = F){
+  library(colorspace)
+  
+  ## make the virus to be uniq
+  for(i in unique(m$classifier)){
+    m$virus[m$classifier == i] <- 1:sum(m$classifier == i)   
+  }
+  
+  m$classifier <- factor(m$classifier, levels=classifiers)
+  mm <-m[, c('classifier','virus','correct_species','correct_higher','unclassified','incorrect')]
+  colnames(mm) <- c("soft",'virus',"Correct species","Correct higher","Unclassified","Incorrect")
+
+  ## generate plots
+  #######################################################################
+  colorcillos <- c(rgb(0, 158, 115, maxColorValue = 255),
+                   rgb(181, 230, 0, maxColorValue = 255),
+                   rgb(243, 155, 0, maxColorValue = 255),
+                   rgb(213, 213, 213, maxColorValue = 255))
+  
+  colours <- c( "#56B4E9","#0072B2", "#D55E00", "#CC79A7")
+  
+  colors_bw <- c("black","gray")
+  
+  a <- plot.classification_per_virus(mm, 'A. Classification per virus', "viruses (order vary per classifer)", colorcillos)
+  b <- plot.classification_mean(mm, 'B. Mean classification', colorcillos)
+  c <- plot.sensitivity_precision_virus(mm, 'C. Mean sensitivity', colors_bw)
+  d <- plot.precision_mean(mm, 'D. Mean precision', colors_bw)
+  
+  
+  
+  if(extra.taxa){
+    # e <-plot.detected_viruses(m, "E. Total number of detected viruses", 'black', gray(0.7), c(1,5,10,20,50))
+    # f <-plot.extra_taxa_mean(extra, "F: Mean number of extra taxa reported", 'black', gray(0.7), c(1,5,10,20,50))
+    e <-plot.detected_viruses(m, "E. Total number of detected viruses", 
+                              colorcillos[1], lighten(colorcillos[1], amount = 0.8), c(1,5,10,20,50))
+    f <-plot.extra_taxa_mean(extra, "F: Mean number of extra taxa reported", 
+                             colorcillos[3], lighten(colorcillos[3], amount = 0.8), c(1,5,10,20,50))
+    
+    generate.pdf(a, b, c, d, e, f, file)
+  }
+  else {
+    generate.pdf(a, b, c, d, file)
+  }
+}
+```
+
+## generate the figures and store them to pdf
+```{r}
+generate.full_pdf2 <- function(m, extra, classifiers, cur.length, file, extra.taxa = F){
+  library(colorspace)
+  library(gridExtra)
+  library(grid)
+  
+  ## make the virus to be uniq
+  for(i in unique(m$classifier)){
+    m$virus[m$classifier == i] <- 1:sum(m$classifier == i)   
+  }
+  
+  m$classifier <- factor(m$classifier, levels=classifiers)
+  mm <-m[, c('classifier','virus','correct_species','correct_higher','unclassified','incorrect')]
+  colnames(mm) <- c("soft",'virus',"Correct species","Correct higher","Unclassified","Incorrect")
+
+  ## generate plots
+  #######################################################################
+  colorcillos <- c(rgb(0, 158, 115, maxColorValue = 255),
+                   rgb(181, 230, 0, maxColorValue = 255),
+                   rgb(243, 155, 0, maxColorValue = 255),
+                   rgb(213, 213, 213, maxColorValue = 255))
+  
+  colours <- c( "#56B4E9","#0072B2", "#D55E00", "#CC79A7")
+  
+  colors_bw <- c("black","gray")
+  
+  a <- plot.classification_per_virus(mm, 'A. Classification per virus', "viruses (order vary per classifer)", colorcillos)
+  b <- plot.classification_mean(mm, 'B. Mean classification', colorcillos)
+  
+  lay <- rbind(c(1,2))
+  grob <- grid.arrange(grobs=list(a, b), layout_matrix=lay)   
+  ggsave(gsub(".pdf", "_sup.pdf", file), width = 297, height = 210*2/3, scale=0.8, units = "mm", grob)
+  #####################################################
+  #####################################################
+  
+  
+   ############################################
+  a <- plot.sensitivity_precision(mm, "A. Sensitivity vs. precision", colours)
+  b <-plot.detected_viruses(m, "B. Total number of correctly detected viruses", 
+                              colorcillos[1], lighten(colorcillos[1], amount = 0.8), c(1,5,10,20,50))
+  c <-plot.extra_taxa_mean(extra, "C. Mean number of spurious extra taxa", 
+                             colorcillos[3], lighten(colorcillos[3], amount = 0.8), c(1,5,10,20,50))
+
+  lay <- rbind(c(1,1),c(2,3))
+  grob <- grid.arrange(grobs=list(a, b, c), layout_matrix=lay)   
+  ggsave(gsub(".pdf", "_details3.pdf", file), width = 297, height = 297, scale=0.8, units = "mm", grob)
+ 
+}
+```
+
+
+## length
+```{r}
+## get data
+path2data <- "/Users/sneuensc/Sapfo/virome_yami/length/length_"
+classifiers <- c("Centrifuge", "Kraken2", "DIAMOND", "MetaPhlAn2")
+lengths <- c(30, 40, 50, 60, 90, 120, 150)
+lengths <- 60
+
+
+for(l in lengths){
+  print(l)
+    
+  m <- compute_statistics2.multiple(classifiers, l, path2data)
+  extra <- get.extra_taxa(classifiers, path2data, l)
+  extra <- extra[extra$classification == "Incorrect",]
+
+  file <- paste0("/Users/sneuensc/Dropbox (popgen)/Virome/PLoS_ONE_virome/sam/figure_length2_", l, ".pdf")
+  generate.full_pdf2(m, extra, classifiers, l, file, T)
+}
+
+```
+
+
+## investigate extra taxa
+```{r}
+path2data <- "/Users/sneuensc/Sapfo/virome_yami/length/length_"
+classifiers <- c("Centrifuge", "Kraken2", "DIAMOND", "MetaPhlAn2")
+l <- 60
+
+extra <- get.extra_taxa(classifiers, path2data, l)[,-c(3,7,9)]
+
+
+m <- compute_statistics2.multiple(classifiers, l, path2data)[,c(4,3,5,6,7,8,2,9,10)]
+m$rank <- NaN
+m$classification <- "Unclassified"
+m <- m[,c('unclass','rank','rank','rank','classification','classifier','GenBankID')]
+colnames(m) <- colnames(extra)
+
+## combine files
+data <- rbind(extra, m)
+data$classification[data$taxID == 1 & data$classification == "Incorrect"] <- "Unclassified"
+d <- data[,list(reads = sum(reads), N = .N), by = c('classification','classifier','original')]
+
+mmm <- data.table(merge(dcast(d, classifier + original ~ classification , value.var = 'reads', fill = 0),
+                        dcast(d, classifier + original ~ classification , value.var = 'N', fill = 0),
+                        by = c('classifier','original'), suffixes = c("", ".N")))
+
+mmm$Total <- apply(mmm[,3:6], 1, sum, na.rm=T)
+mmm$Correct_species <-  100 * mmm$Correct_species / mmm$Total
+mmm$Correct_higher <-  100 * mmm$Correct_higher / mmm$Total
+mmm$Unclassified <-  100 * mmm$Unclassified / mmm$Total
+mmm$Incorrect <-  100 * mmm$Incorrect / mmm$Total
+
+
+######################################################
+
+d <- mmm[,c(1,4,3,6,5)]
+for(i in unique(d$classifier)){
+  d$virus[d$classifier == i] <- 1:sum(d$classifier == i)   
+}
+d <- d[,c(1,6,2:5)]
+colnames(d) <- c('soft','virus','Correct species','Correct higher','Unclassified','Incorrect')
+
+
+mm <- d
+
+## generate plots
+#######################################################################
+colorcillos <- c(rgb(0, 158, 115, maxColorValue = 255),
+                 rgb(181, 230, 0, maxColorValue = 255),
+                 rgb(243, 155, 0, maxColorValue = 255),
+                 rgb(213, 213, 213, maxColorValue = 255))
+
+colours <- c( "#56B4E9","#0072B2", "#D55E00", "#CC79A7")
+
+colors_bw <- c("black","gray")
+
+a <- plot.classification_per_virus(mm, 'A. Classification per virus', "viruses (order vary per classifer)", colorcillos)
+b <- plot.classification_mean(mm, 'B. Mean classification', colorcillos)
+c <- plot.sensitivity_mean(mm, 'C. Mean sensitivity', colors_bw)
+d <- plot.precision_mean(mm, 'D. Mean precision', colors_bw)
+
+
+m <- compute_statistics2.multiple(classifiers, l, path2data)
+for(i in unique(m$classifier)){
+  m$virus[m$classifier == i] <- 1:sum(m$classifier == i)   
+}
+m$classifier <- factor(m$classifier, levels = classifiers)
+e <-plot.detected_viruses(m, "E. Total number of detected viruses", 
+                          colorcillos[1], lighten(colorcillos[1], amount = 0.8), c(1,5,10,20,50))
+
+extra <- get.extra_taxa(classifiers, path2data, l)
+extra$classification[extra$taxID == 1 & extra$classification == "Incorrect"] <- "Unclassified"
+extra <- extra[extra$classification == "Incorrect",]
+f <-plot.extra_taxa_mean(extra, "F: Mean number of extra taxa reported", 
+                         colorcillos[3], lighten(colorcillos[3], amount = 0.8), c(1,5,10,20,50))
+
+file <- paste0("/Users/sneuensc/Dropbox (popgen)/Virome/PLoS_ONE_virome/sam/figure_length3_", l, ".pdf")
+generate.pdf(a, b, c, d, e, f, file)
+
+
+```
+
+```{r}
+
+d1 <-NULL
+for(i in thres){
+  d <- extra[extra$reads >= i, list('extra_taxa' = .N), by = c('classifier','original')]
+  d <- d[,list('extra_taxa' = mean(extra_taxa)), by = 'classifier']
+  d$thres <- paste0(i, " reads")
+  d1 <- rbind(d1, d)
+}
+d1$thres[d1$thres == "1 reads"] <- "1 read"
+d1$thres <- factor(d1$thres, levels = unique(d1$thres))
+
+
+
+#######################################################################
+## normal file
+m <- compute_statistics2.multiple(classifiers, l, path2data)
+library(colorspace)
+
+## make the virus to be uniq
+for(i in unique(m$classifier)){
+  m$virus[m$classifier == i] <- 1:sum(m$classifier == i)   
+}
+
+mm <-m[, c('classifier','virus','correct_species','correct_higher','unclassified','incorrect')]
+colnames(mm) <- c("soft",'virus',"Correct species","Correct higher","Unclassified","Incorrect")
+mm$soft <- factor(mm$soft, levels=classifiers)
+
+## generate plots
+#######################################################################
+colorcillos <- c(rgb(0, 158, 115, maxColorValue = 255),
+                 rgb(181, 230, 0, maxColorValue = 255),
+                 rgb(243, 155, 0, maxColorValue = 255),
+                 rgb(213, 213, 213, maxColorValue = 255))
+
+colours <- c( "#56B4E9","#0072B2", "#D55E00", "#CC79A7")
+
+mmm <- mm
+title <- 'A. Classification per virus'
+xlab <- "viruses (order vary per classifer)"
+colors <- colorcillos
+
+library(data.table)
+library(ggplot2)
+library(reshape2)
+
+## ordering following correct species
+mmm <- mmm[order(mmm$`Correct species`, mmm$`Correct higher`, mmm$Unclassified, mmm$Incorrect, decreasing = T),]
+
+data <- data.table(reshape2::melt(mmm, id.vars = c('soft','virus')))
+colnames(data)[3:4] <- c("category", "props")
+
+d <- NULL
+for(i in levels(data$soft)){
+  sel = data[data$soft == i,]
+  tmp <- sel[sel$category == "Correct species", ]
+  #tmp <- tmp[order(tmp$props, tmp$category, decreasing = T),]
+  ord <- data.frame('virus' = tmp$virus, 'order' = 1:nrow(tmp))
+  
+  d <- rbind(d, merge(sel, ord))
+}
+
+d$class <- "ordered following 'correct species'"
+dd <- d
+
+
+## ordering following correct species & hihger
+mmm$correct2 <- mmm$`Correct species` + mmm$`Correct higher`
+mmm <- mmm[order(mmm$correct2, mmm$`Correct species`, mmm$`Correct higher`, mmm$Unclassified, mmm$Incorrect, decreasing = T),]
+mmm <- mmm[, -'correct2']
+
+## 
+data <- data.table(reshape2::melt(mmm, id.vars = c('soft','virus')))
+colnames(data)[3:4] <- c("category", "props")
+
+## correct species & higher
+d <- NULL
+for(i in levels(data$soft)){
+  sel = data[data$soft == i,]
+  tmp <- sel[sel$category == "Correct species", ]
+  tmp$props2 <- sel$props[sel$category == "Correct higher"]
+  #tmp <- tmp[order(tmp$props + tmp$props2, decreasing = T),]
+  ord <- data.frame('virus' = tmp$virus, 'order' = 1:nrow(tmp))
+  
+  d <- rbind(d, merge(sel, ord))
+}
+
+d$class <- "ordered following 'correct species & higher'"
+dd <- rbind(dd, d)
+dd$class <- factor(dd$class, levels = c("ordered following 'correct species'", "ordered following 'correct species & higher'"))
+
+dd$order <- factor(dd$order, levels=1:120)
+dd$category <- factor(dd$category, levels=rev(c("Correct species","Correct higher","Incorrect","Unclassified")))
+
+d1 <- ggplot(dd, aes(color = category, fill = category, x = order, y = props)) +
+  theme_classic() +
+  geom_bar(stat="identity") +
+  scale_fill_manual(values = rev(colors)) +
+  scale_color_manual(values = rev(colors)) +
+  ylab("% of reads") +
+  xlab(xlab) +
+  ggtitle(title) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        legend.position = "none") +
+  facet_grid(vars(soft), vars(class))
+d1
+
+
+```
+```
+
+
+
+
+
