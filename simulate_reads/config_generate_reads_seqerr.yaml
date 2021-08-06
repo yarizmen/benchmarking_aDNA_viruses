@@ -1,4 +1,4 @@
-# config file to run "generate_reads_length.smk"
+# config file to run "generate_reads_seqerr.smk"
 
 source_fastas: ['hg19']
 
@@ -6,4 +6,5 @@ source_fastas: ['hg19']
 seq_technology: 'HS25'
 length: 60
 coverage: 10
+q_shift: 0
 seed: 5
