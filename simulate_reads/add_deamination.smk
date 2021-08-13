@@ -19,7 +19,7 @@ rule run_gargammel:
     resources:
         memory = 8000
     log:
-        logs/gargammel/{fasta}/{fasta}_run_gargammel.log
+        "logs/gargammel/{fasta}/{fasta}_run_gargammel.log"
     shell:
         '''
         deamSim -damage {params.nick},{params.lovends},{params.deamd},{params.deams} {input} > \

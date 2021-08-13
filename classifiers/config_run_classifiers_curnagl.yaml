@@ -1,0 +1,29 @@
+# Config file for run_classifiers_curnagl.smk
+
+# Samples (250 human DNA viruses)
+samples: ["AC_000005.1", "AC_000006.1", "AC_000007.1", "AC_000008.1", "AC_000010.1", "AC_000011.1", "AC_000017.1", "AC_000018.1", "AC_000019.1", "NC_000883.2", "NC_000898.1", "NC_001348.1", "NC_001352.1", "NC_001354.1", "NC_001355.1", "NC_001356.1", "NC_001357.1", "NC_001401.2", "NC_001405.1", "NC_001436.1", "NC_001454.1", "NC_001457.1", "NC_001458.1", "NC_001460.1", "NC_001488.1", "NC_001526.4", "NC_001531.1", "NC_001538.1", "NC_001576.1", "NC_001583.1", "NC_001586.1", "NC_001587.1", "NC_001591.1", "NC_001593.1", "NC_001595.1", "NC_001596.1", "NC_001611.1", "NC_001664.4", "NC_001676.1", "NC_001690.1", "NC_001691.1", "NC_001693.1", "NC_001694.1", "NC_001699.1", "NC_001716.2", "NC_001729.1", "NC_001731.1", "NC_001798.2", "NC_001806.2", "NC_001829.1", "NC_002076.2", "NC_002195.1", "NC_002642.1", "NC_003059.1", "NC_003266.2", "NC_003310.1", "NC_003663.2", "NC_003977.2", "NC_004104.1", "NC_004295.1", "NC_004500.1", "NC_004812.1", "NC_005134.2", "NC_005179.1", "NC_005336.1", "NC_006152.1", "NC_006260.1", "NC_006261.1", "NC_006273.2", "NC_006560.1", "NC_006998.1", "NC_007013.1", "NC_007014.1", "NC_007018.1", "NC_007455.1", "NC_007605.1", "NC_007653.1", "NC_008188.1", "NC_008189.1", "NC_009225.1", "NC_009238.1", "NC_009333.1", "NC_009334.1", "NC_009539.1", "NC_010277.2", "NC_010329.1", "NC_010820.1", "NC_010956.1", "NC_011202.1", "NC_011203.1", "NC_011800.1", "NC_012042.1", "NC_012213.1", "NC_012485.1", "NC_012486.1", "NC_012564.1", "NC_012729.2", "NC_012959.1", "NC_013035.1", "NC_014068.1", "NC_014073.1", "NC_014074.1", "NC_014075.1", "NC_014076.1", "NC_014078.1", "NC_014080.1", "NC_014081.1", "NC_014082.1", "NC_014083.1", "NC_014084.1", "NC_014086.1", "NC_014088.1", "NC_014089.1", "NC_014091.1", "NC_014093.1", "NC_014094.1", "NC_014095.1", "NC_014096.1", "NC_014097.1", "NC_014185.1", "NC_014358.1", "NC_014361.1", "NC_014406.1", "NC_014407.1", "NC_014469.1", "NC_014952.1", "NC_014953.1", "NC_014954.1", "NC_014955.1", "NC_014956.1", "NC_015150.1", "NC_015783.1", "NC_016157.1", "NC_017091.1", "NC_017825.1", "NC_017993.1", "NC_017994.1", "NC_017995.1", "NC_017996.1", "NC_017997.1", "NC_018102.1", "NC_018401.1", "NC_019023.1", "NC_020106.1", "NC_020487.1", "NC_020498.1", "NC_020890.1", "NC_021483.1", "NC_021568.1", "NC_022089.1", "NC_022095.1", "NC_022518.1", "NC_022788.1", "NC_022789.1", "NC_022892.1", "NC_023874.2", "NC_023888.1", "NC_023891.1", "NC_024118.1", "NC_024691.1", "NC_024694.1", "NC_024888.1", "NC_025726.1", "NC_025727.1", "NC_026252.1", "NC_026817.1", "NC_026946.1", "NC_027528.1", "NC_027779.1", "NC_028125.1", "NC_028459.1", "NC_030297.1", "NC_030447.1", "NC_030448.1", "NC_030449.1", "NC_032480.1", "NC_032682.2", "NC_033781.1", "NC_034253.1", "NC_034616.1", "NC_035211.1", "NC_035212.1", "NC_035213.1", "NC_035469.1", "NC_035474.1", "NC_035475.1", "NC_036877.1", "NC_038260.1", "NC_038337.1", "NC_038345.1", "NC_038346.1", "NC_038347.1", "NC_038350.1", "NC_038351.1", "NC_038352.1", "NC_038353.1", "NC_038354.1", "NC_038355.1", "NC_038356.1", "NC_038357.1", "NC_038358.1", "NC_038359.1", "NC_038360.1", "NC_038361.1", "NC_038392.1", "NC_038412.1", "NC_038413.1", "NC_038414.1", "NC_038415.1", "NC_038416.1", "NC_038417.1", "NC_038418.1", "NC_038496.1", "NC_038497.1", "NC_038522.1", "NC_038523.1", "NC_038524.1", "NC_038525.1", "NC_038889.1", "NC_038914.1", "NC_039024.1", "NC_039025.1", "NC_039050.1", "NC_039061.1", "NC_039062.1", "NC_039063.1", "NC_039070.1", "NC_039086.1", "NC_039089.1", "NC_039215.1", "NC_040306.1", "NC_040309.1", "NC_040550.1", "NC_040619.1", "NC_040620.1", "NC_040640.1", "NC_040688.1", "NC_040691.1", "NC_040803.1", "NC_040804.1", "NC_040805.1", "NC_040806.1", "NC_043223.1", "NC_043224.1", "NC_043225.1", "NC_043226.1", "NC_043227.1", "NC_043228.1", "NC_043445.1", "NC_049978.1"]
+
+# Centrifuge
+path2Centrifuge_db: '/work/FAC/FBM/DBC/amalaspi/popgen/yarizmen/from_wally/virome/simulations_Feb_2020b/abv'
+
+# Kraken2
+# Old database
+path2Kraken2_db: '/work/FAC/FBM/DBC/amalaspi/popgen/yarizmen/from_wally/virome/simulations_Feb_2020b/KRAKEN2database'
+# New database (default k-mer length)
+#path2Kraken2_db: '/work/FAC/FBM/DBC/amalaspi/popgen/sneuensc/virome/kraken2/kraken2_35kmer'
+# New database (29 k-mer length)
+#path2Kraken2_db: '/work/FAC/FBM/DBC/amalaspi/popgen/sneuensc/virome/kraken2/kraken2_29kmer'
+
+# DIAMOND
+path2DIAMOND_db: '/work/FAC/FBM/DBC/amalaspi/popgen/yarizmen/from_wally/virome/simulations_Feb_2020b/Viral_tax'
+
+# MetaPhlAn2
+path2MetaPhlAn2: '/work/FAC/FBM/DBC/amalaspi/popgen/yarizmen/from_wally/popgen/virome/tools_scripts/MetaPhlan2/metaphlan2/metaphlan2.py'
+
+api_key: "8f5a7ee70253e037c5641bab48b0d6d74908"
+
+# From MetaPhlAn2 names to taxIDs
+path2Rscript: '/work/FAC/FBM/DBC/amalaspi/popgen/yarizmen/from_wally/virome/simulations_classifiers/classifiers/MetaPhlAn2_labels_to_taxIDs_v2.R'
+
+# Script to merge outputs into single table
+path2merge_script: '/work/FAC/FBM/DBC/amalaspi/popgen/yarizmen/from_wally/virome/simulations_classifiers/classifiers/merge_into_counts_table.R'
