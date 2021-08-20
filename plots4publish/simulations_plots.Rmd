@@ -50,29 +50,36 @@ ggplot(seq_lgt, aes(x = "viral genomes", y = length)) +
 
 Overlapping histograms: one for 120 viral sequences; and one for the RefSeq viral sequences
 ```{r histograms: sequence length 120 viruses and RefSeq}
-ggplot() +
+viral_sequences_lgth <- ggplot() +
   geom_histogram(data = RefSeq_lgt,
-                 bins = 300, 
+                 bins = 50, 
                  aes(x = length, y = stat(count)/sum(count),
                      fill = "RS"),# colour = "RS"),
                  #fill = "#E69F00", 
-                 alpha = 0.3) +
+                 alpha = 0.4) +
   geom_histogram(data = seq_lgt, 
                  bins = 50,
                  aes(x = length, y = stat(count)/sum(count),
                      fill = "v120"),# colour = "v120"), 
                  #fill = "#0072B2", 
-                 alpha = 0.2) +
+                 alpha = 0.4) +
   scale_x_continuous(trans = 'log10') +
   scale_y_continuous(labels = scales::percent) +
   scale_fill_manual(values = c("RS" = "#E69F00", "v120" = "#0072B2"), 
-                    labels = c("RS" = "RefSeq 10,544 viral sequences", 
-                               "v120" = "Our 120 viral sequences"),
+                    labels = c("RS" = "10,544 RefSeq viral sequences", 
+                               "v120" = "120 selected viral sequences"),
                     name = "Legend") +
   scale_colour_manual(values = c("RS" = "#E69F00", "v120" = "#0072B2"), 
-                    labels = c("RS" = "RefSeq 10,544 viral sequences", 
-                               "v120" = "Our 120 viral sequences"),
-                    name = "Legend")
+                    labels = c("RS" = "10,544 RefSeq viral sequences", 
+                               "v120" = "120 selected viral sequences"),
+                    name = "Legend") +
+  theme_classic() +
+  theme(legend.position = c(0.75, 0.8), legend.title = element_blank()) +
+  xlab("Length (bp)") +
+  ylab("Frequency")
+
+ggsave("~/Dropbox/Virome/PLoS_ONE_virome/figures_2021_03_19/figure_1_viral_sequences_lgth.pdf",
+       viral_sequences_lgth, width = 297, height = 210, scale = 0.75, units = "mm")
 ```
 
 Density proposed by Sam. Discarded.
@@ -450,7 +457,7 @@ dots_median
 # Length variation
 
 ```{r function to create df for variation simulations}
-create_df_condition <- function(path2data, condition, condition_values) {
+create_df_condition <- function(path2data, condition, condition_values, decimals = F) {
   
   all_tables <- vector(mode = "list", length = length(condition_values))
   
@@ -468,6 +475,10 @@ create_df_condition <- function(path2data, condition, condition_values) {
   
   classifier <- rep(classifiers, length(condition_values)) %>% factor(., levels = classifiers)
   df_all_tables <- cbind(df_all_tables, classifier)
+  
+  if (decimals == T) {
+    condition_values <- paste0("0.", condition_values) %>% as.numeric(.)
+  }
   
   values <- sapply(condition_values, rep, length(classifiers), simplify = F) %>% unlist(.)
   df_all_tables <- cbind(df_all_tables, values)
@@ -522,7 +533,7 @@ comparison_ggplot_lines <- function(condition_df, classifier_colors, ylabs, xlab
 }
 ```
 
-```{r}
+```{r plots on grid}
 length_plots <- comparison_ggplot_lines(condition_df = length_variation, 
                                         classifier_colors = classifier_colors,
                                         ylabs = c(rep("%", 6), "# identified", 
@@ -541,3 +552,30 @@ ggsave("~/Downloads/Lengths.pdf", g_lengths, width = 7, height = 10, units = "in
 
 ```
 
+# Deaminaion variation
+
+```{r length variation data}
+deamination_variation <- create_df_condition(path2data = sim_data, 
+                                             condition = "Deamination/Deam_singlstr_",
+                                             condition_values = c(0, 05, 1, 15, 2, 25, 3, 35, 4, 
+                                                                  45, 5),
+                                             decimals = T)
+```
+
+```{r plots on grid}
+deamination_plots <- comparison_ggplot_lines(condition_df = deamination_variation, 
+                                        classifier_colors = classifier_colors,
+                                        ylabs = c(rep("%", 6), "# identified", 
+                                                  "# extra taxa reported"), 
+                                        xlabs = rep("deamination in single strand parts", 8), 
+                                        titles = c("Proportion classified", 
+                                                   "Proportion correct species", 
+                                                   "Proportion correct higher",
+                                                   "Proportion incorrect classified",
+                                                   "Precision", "Sensitivity", 
+                                                   "Identified viruses", "Extra taxa reported"))
+
+g_deaminations <- grid.arrange(grobs = deamination_plots, ncol = 2, nrow = 4)
+ggsave("~/Downloads/Deamination.pdf", g_deaminations, width = 7, height = 10, units = "in", 
+       scale = 2)
+```
