@@ -284,7 +284,7 @@ rule get_name_rank:
     shell:
         '''
         for i in `cut -f2 {input.taxon_id}`; do
-        efetch -api_key {params.api_key} -db taxonomy -id ${{i}} -format xml | \
+        efetch -db taxonomy -id ${{i}} -format xml | \
         xtract -pattern Taxon -element TaxId ScientificName Rank >> {output.name_rank};
         done
 
