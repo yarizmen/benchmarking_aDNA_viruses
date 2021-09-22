@@ -1,0 +1,432 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+## sensitivity figure
+```{r}
+
+plot.sensitivity <- function(d, title, xlab, xbreaks, xlabels, colors, default = NaN, reverse = F){
+
+  d$sens <- apply(d[,4:7],1, function(x)return(x[1]/(sum(x))))
+  d$sens2 <- apply(d[,4:7],1, function(x)return((x[1]+x[2])/(sum(x))))
+
+  d <- d[,-3][, lapply(.SD, mean, na.rm=T), by = c('Idx', 'Classifier')]
+  
+  d1 <- data.table(reshape2::melt(d, id.vars = c('Idx','Classifier')))
+  colnames(d1)[3:4] <- c("category", "props")
+  
+  
+  d2 <- merge(d1[d1$category == "sens",-3], d1[d1$category == "sens2", -3], by=c('Idx','Classifier'))
+  
+  o1a <- ggplot(d2, aes(x=Idx, color = Classifier)) +
+    geom_line(aes(y = 100*props.x), size = 1) +
+    geom_line(aes(y = 100*props.y), linetype="dashed", size = 1) +
+    theme_classic() +
+    ylab("% (correct / all reads)") +
+    scale_color_manual(values = colors) +
+    ggtitle(title) +
+    guides(color=guide_legend(title="Classifier")) +
+    theme(legend.position = "none",
+          panel.grid.major = element_line()) +
+    ylim(0,100) 
+  
+  if(!is.na(default)) o1a <- o1a + geom_vline(xintercept = default, linetype = "dashed")
+ 
+  if(reverse) {o1a <- o1a + scale_x_reverse(xlab, breaks = xbreaks, labels = xlabels)
+  }else{ o1a <- o1a + scale_x_continuous(xlab, breaks = xbreaks, labels = xlabels)}
+
+  o1a
+}
+
+#plot.sensitivity(data[,c('Idx','Classifier','GenBankID','Correct species','Correct higher','Unclassified','Incorrect')], 
+#                 "A. Mean sensitivity", xlab, xbreaks, xlabels, colours, 60)
+```
+
+## precision figure
+```{r}
+
+plot.precision <- function(d, title, xlab, xbreaks, xlabels, colors, default = NaN, reverse = F){
+
+  d$prec <- apply(d[,4:7],1, function(x)return(x[1]/(sum(x[1:3]))))
+  d$prec2 <- apply(d[,4:7],1, function(x)return((x[1]+x[2])/(sum(x[1:3]))))
+  
+  d <- d[,-3][, lapply(.SD, mean, na.rm=T), by = c('Idx', 'Classifier')]
+  
+  d1 <- data.table(reshape2::melt(d, id.vars = c('Idx','Classifier')))
+  colnames(d1)[3:4] <- c("category", "props")
+  
+  
+  d2 <- merge(d1[d1$category == "prec",-3], d1[d1$category == "prec2", -3], by=c('Idx','Classifier'))
+
+  o1a <- ggplot(d2, aes(x=Idx, color = Classifier)) +
+    geom_line(aes(y = 100*props.x, linetype="1"), size = 1) +
+    geom_line(aes(y = 100*props.y, linetype="2"), size = 1) +
+    theme_classic() +
+    ylab("% (correct / classified reads)") +
+    scale_color_manual(values = colors) +
+    ggtitle(title) +
+    guides(color=guide_legend(title="Classifier")) +
+    scale_linetype_discrete(name = "Considered correct", labels = c("species", "species & higher")) +
+    theme(legend.position = "none") +
+    ylim(0,100) +
+    theme(legend.position=c(0.68, 0.25),
+          legend.box = "horizontal",
+          panel.grid.major = element_line())
+ 
+  if(!is.na(default)) o1a <- o1a + geom_vline(xintercept = default, linetype = "dashed")
+
+    if(reverse) {o1a <- o1a + scale_x_reverse(xlab, breaks = xbreaks, labels = xlabels)
+  }else{ o1a <- o1a + scale_x_continuous(xlab, breaks = xbreaks, labels = xlabels)}
+
+  o1a
+}
+
+# plot.precision(data[,c('Idx','Classifier','GenBankID','Correct species','Correct higher','Unclassified','Incorrect')], 
+#                    "B. Mean precision", xlab, xbreaks, xlabels, colours, 60)
+```
+
+
+## detected virus
+```{r}
+plot.detected_viruses <- function(d, title, xlab, xbreaks, xlabels, colors, default = NaN, reverse = F){
+  
+  FUN <- function(x)return(sum(x>0))
+  d1 <- d[,list("identified" = FUN(Correct_Sp)), by=c("Classifier","Idx")]
+  
+  o6 <- ggplot(d1, aes(x = Idx, y = identified, color = Classifier)) +
+    geom_line(size = 1) +
+    geom_hline(yintercept=250, linetype="dashed") +
+    theme_classic() +
+    scale_color_manual(values = colors) +
+    guides(color=guide_legend(title="Classifier")) +
+    ggtitle(title) +
+    ylim(0, 253) +
+    ylab("Total number of correctly detected viruses") +
+    theme(legend.position = "none",
+          panel.grid.major = element_line())
+  
+  if(!is.na(default)) o6 <- o6 + geom_vline(xintercept = default, linetype = "dashed")
+  
+  if(reverse) {
+    o6 <- o6 + scale_x_reverse(xlab, breaks = xbreaks, labels = xlabels) +
+          geom_text(aes(-Inf, 250, label = "250 correct viruses", vjust = -0.7, hjust = 1), color = "black") 
+  }else{ 
+    o6 <- o6 + scale_x_continuous(xlab, breaks = xbreaks, labels = xlabels) +
+          geom_text(aes(Inf, 250, label = "250 correct viruses", vjust = -0.7, hjust = 1), color = "black") 
+    }
+  
+  o6
+}
+#plot.detected_viruses(data[,c('Idx','Classifier','GenBankID','Correct_Sp')], 
+ #     "C. Total number of correctly detected viruses", xlab, xbreaks, xlabels, colours, 60)
+```
+
+## extra taxa
+```{r}
+plot.extra_viruses <- function(d, title, xlab, xbreaks, xlabels, colors, default = NaN, reverse = F){
+  # d <- data[data$classification == "Incorrect", list('extra_taxa' = .N), by = c('classifier','original','length')]
+  # d <- d[,list('extra_taxa' = mean(extra_taxa)), by = c('classifier','length')]
+  # 
+  # ## replace missing values with 0
+  # for(c in unique(d$classifier)){
+  #   for(l in unique(d$length)){
+  #     if(length(d$length[d$classifier == c & d$length == l]) == 0){
+  #       d <- rbind(d, list('classifier' = c, 'length' = l, 'extra_taxa' = 0))
+  #     }
+  #   }
+  # }
+  
+  d1 <- d[,list('extra'=mean(`1 reads`)), by=c("Classifier","Idx")]
+  
+  #colnames(d)[4]<-"value"
+#  d$`1 reads`<-as.numeric(d$`1 reads`)
+  
+  o7 <- ggplot(d1, aes(x = Idx, y = extra, color = Classifier)) +
+    geom_line(size = 1) +
+    scale_color_manual(values = colors) +
+    theme_classic()+
+    guides(color=guide_legend(title="Classifier")) +
+    ggtitle(title) +
+    #ylim(0, max(d$'1 reads')) +
+    ylab("Mean number of spurious extra taxa") +
+    theme(legend.position = "none",
+          panel.grid.major = element_line())
+  
+ if(!is.na(default)) o7 <- o7 + geom_vline(xintercept = default, linetype = "dashed")
+  
+ if(reverse) {o7 <- o7 + scale_x_reverse(xlab, breaks = xbreaks, labels = xlabels)
+ }else{ o7 <- o7 + scale_x_continuous(xlab, breaks = xbreaks, labels = xlabels)}
+   
+  o7
+}
+
+#plot.extra_viruses(data[,c('Idx','Classifier','GenBankID','1 reads')], 
+#                   "D. Mean number of spurious extra taxa", xlab, xbreaks, xlabels, colours, 60)
+```
+
+
+## length
+```{r}
+## get data
+library(gridExtra)
+library(grid)
+
+data <- dataAll[dataAll$Set == "lengths",]
+data$Idx <- as.numeric(gsub("length_", "", data$Idx))
+lengths <- names(table(data$Idx))
+
+xbreaks <- unique(data$Idx)
+xlabels <- unique(data$Idx)
+
+xlab = "read length in bp"
+
+## for the figure below
+A.length <- data[,c('Idx','Classifier','GenBankID','Correct species','Correct higher','Unclassified','Incorrect')]
+
+
+
+a <- plot.sensitivity(data[,c('Idx','Classifier','GenBankID','Correct species','Correct higher','Unclassified','Incorrect')], 
+                      "A. Mean sensitivity", xlab, xbreaks, xlabels, colours, 60)
+b <- plot.precision(data[,c('Idx','Classifier','GenBankID','Correct species','Correct higher','Unclassified','Incorrect')], 
+                    "B. Mean precision", xlab, xbreaks, xlabels, colours, 60)
+c <- plot.detected_viruses(data[,c('Idx','Classifier','GenBankID','Correct_Sp')], 
+                           "C. Total number of correctly detected viruses", xlab, xbreaks, xlabels, colours, 60)
+d <- plot.extra_viruses(data[,c('Idx','Classifier','GenBankID','1 reads')], 
+                        "D. Mean number of spurious extra taxa", xlab, xbreaks, xlabels, colours, 60)
+
+## generate pdf
+#######################################################################
+file <- paste0(folder,"/figure_05_read_length.pdf")
+lay <- rbind(c(1,2),
+             c(3,4))
+grob <- grid.arrange(grobs=list(a,b,c,d), layout_matrix=lay)   
+  
+ggsave(file, width = 297, height = 210*3/3, scale=1, units = "mm", grob)
+
+```
+## deamination
+```{r}
+## get data
+library(gridExtra)
+library(grid)
+
+data <- dataAll[dataAll$Set == "deamination",]
+data$Idx[data$Idx=="deams_0"] <- "deams_point0"
+data$Idx <- as.numeric(gsub("deams_point", "0.", data$Idx))
+
+xbreaks <- unique(data$Idx)
+xlabels <- unique(data$Idx)
+
+xlab = "single-stranded probability of deamination"
+
+## for the figure below
+A.deamination <- data[,c('Idx','Classifier','GenBankID','Correct species','Correct higher','Unclassified','Incorrect')]
+
+
+a <- plot.sensitivity(data[,c('Idx','Classifier','GenBankID','Correct species','Correct higher','Unclassified','Incorrect')], 
+                      "A. Mean sensitivity", xlab, xbreaks, xlabels, colours)
+b <- plot.precision(data[,c('Idx','Classifier','GenBankID','Correct species','Correct higher','Unclassified','Incorrect')], 
+                    "B. Mean precision", xlab, xbreaks, xlabels, colours)
+c <- plot.detected_viruses(data[,c('Idx','Classifier','GenBankID','Correct_Sp')], 
+                           "C. Total number of correctly detected viruses", xlab, xbreaks, xlabels, colours)
+d <- plot.extra_viruses(data[,c('Idx','Classifier','GenBankID','1 reads')], 
+                        "D. Mean number of spurious extra taxa", xlab, xbreaks, xlabels, colours)
+
+## generate pdf
+#######################################################################
+file <- paste0(folder,"/figure_06_deamintion.pdf")
+lay <- rbind(c(1,2),
+             c(3,4))
+grob <- grid.arrange(grobs=list(a,b,c,d), layout_matrix=lay)   
+  
+ggsave(file, width = 297, height = 210*3/3, scale=1, units = "mm", grob)
+
+```
+
+
+## seq error (times substitutions ordered)
+```{r}
+## get data
+library(gridExtra)
+library(grid)
+
+data <- dataAll[dataAll$Set == "sequencing_errors",]
+data$Idx[data$Idx=="seqerr_0"] <- "seqerr_minus0"
+data$Idx <- as.numeric(gsub("seqerr_minus", "-", data$Idx))
+
+## tweak data
+#######################################################################
+to.error <- function(x)return(round(1/(10^(x/10)),1))
+xlabels <- paste0(to.error(unique(data$Idx)) , " (", unique(data$Idx), ")")
+
+#xlabels[1:5] <- gsub(" ", "\n", xlabels[1:5])
+#xlabels[c(2)] <- ""
+
+xbreaks <- unique(data$Idx)
+
+xlab = "fold increase of substitutions (qShift)"
+
+## for the figure below
+A.seq_error <- data[,c('Idx','Classifier','GenBankID','Correct species','Correct higher','Unclassified','Incorrect')]
+
+
+a <- plot.sensitivity(data[,c('Idx','Classifier','GenBankID','Correct species','Correct higher','Unclassified','Incorrect')], 
+                      "A. Mean sensitivity", xlab, xbreaks, xlabels, colours, default = NaN, 1)
+b <- plot.precision(data[,c('Idx','Classifier','GenBankID','Correct species','Correct higher','Unclassified','Incorrect')], 
+                    "B. Mean precision", xlab, xbreaks, xlabels, colours, default = NaN, 1)
+c <- plot.detected_viruses(data[,c('Idx','Classifier','GenBankID','Correct_Sp')], 
+                           "C. Total number of correctly detected viruses", xlab, xbreaks, xlabels, default = NaN, colours, 1)
+d <- plot.extra_viruses(data[,c('Idx','Classifier','GenBankID','1 reads')], 
+                        "D. Mean number of spurious extra taxa", xlab, xbreaks, xlabels, default = NaN, colours, 1)
+
+## generate pdf
+#######################################################################
+file <- paste0(folder,"/figure_07_seq_error.pdf")
+lay <- rbind(c(1,2),
+             c(3,4))
+grob <- grid.arrange(grobs=list(a,b,c,d), layout_matrix=lay)   
+  
+ggsave(file, width = 297, height = 210*3/3, scale=1, units = "mm", grob)
+
+
+
+```
+
+## generate the supplement overall classifier plot
+```{r}
+to.error <- function(x)return(round(1/(10^(x/10)),1))
+
+A.length$group <- "length"
+A.deamination$group <- "deamination"
+A.seq_error$group <- "sequencing error"
+A.seq_error2 <- A.seq_error
+A.seq_error2$Idx <- to.error(A.seq_error2$Idx)
+d <- rbind(A.length, A.deamination, A.seq_error2)
+
+d2 <- d[,-3][, lapply(.SD, mean, na.rm=T), by = c('Idx', 'Classifier','group')]
+d3 <- data.table(reshape2::melt(d2, id.vars = 1:3))
+d3$variable <- factor(d3$variable, levels=levels(d3$variable)[c(3,4,2,1)])
+d3$group <- factor(d3$group, levels=c('length','deamination','sequencing error'))
+
+
+## get the vertical lines
+llines <- d3[,.N, by = c('Idx','group')][,-3]
+llines <- llines[order(llines$group, llines$Idx),]
+
+count <- 0
+breaks_fun <- function(x) {
+  count <<- count + 1L
+  if(count == 1) {
+    return(llines$Idx[llines$group == "length"])
+  }else if(count == 3){
+    return(llines$Idx[llines$group == "deamination"])
+  }else if(count == 5){
+    return(llines$Idx[llines$group == "sequencing error"])
+  }
+  return (500)
+}
+
+p1 <- ggplot(d3, aes(x=Idx, y=value)) +
+  geom_area(aes(fill = variable)) +
+  theme_classic() +
+  scale_fill_manual(values = rev(colorcillos)) +
+  ggtitle("Classifier") +
+  facet_grid(rows=vars(Classifier), cols=vars(group), scales="free_x") +
+  ylab("% reads") +
+  xlab(paste0("             read length in bp            ",
+              "                             ",
+              "single-stranded probability of deamination",
+              "                             ",
+              "      fold increase of substitutions      ")) +
+  guides(fill=guide_legend(title="Classification")) +
+  geom_vline(data = llines, aes(xintercept = Idx), color=gray(0.9)) +
+  scale_x_continuous(breaks = breaks_fun) +
+  geom_hline(aes(yintercept=-Inf)) + 
+  geom_vline(aes(xintercept=-Inf)) + 
+  coord_cartesian(clip="off") +
+  theme(legend.position=c(0.92, 0.685))
+  #       panel.grid.major = element_line(),
+  #       # legend.title = element_text(size = 11),
+  #       #legend.text = element_text(size = 5)
+  #       legend.key.height= unit(0.5, 'cm'),
+  #       legend.key.width= unit(0.5, 'cm'))
+
+# p1
+
+p2 <- addSmallLegend(p1, pointSize = 4, textSize = 9, spaceLegend = 0.4)
+
+file <- paste0(folder,"/figure_S03_all_classifiers.pdf")
+ggsave(file, width = 297, height = 210*3/3, scale=1, units = "mm", p2)
+```
+
+## suplement figure with the classifications
+```{r}
+to.error <- function(x)return(round(1/(10^(x/10)),1))
+
+A.length$group <- "length"
+A.deamination$group <- "deamination"
+A.seq_error$group <- "sequencing error"
+A.seq_error2 <- A.seq_error
+A.seq_error2$Idx <- to.error(A.seq_error2$Idx)
+d <- rbind(A.length, A.deamination, A.seq_error2)
+
+d2 <- d[,-3][, lapply(.SD, mean, na.rm=T), by = c('Idx', 'Classifier','group')]
+d3 <- data.table(reshape2::melt(d2, id.vars = 1:3))
+d3$variable <- factor(d3$variable, levels=levels(d3$variable)[c(1,2,4,3)])
+d3$group <- factor(d3$group, levels=c('length','deamination','sequencing error'))
+
+
+## get the vertical lines
+llines <- d3[,.N, by = c('Idx','group')][,-3]
+llines <- llines[order(llines$group, llines$Idx),]
+
+count <- 0
+breaks_fun <- function(x) {
+  count <<- count + 1L
+  if(count == 1) {
+    return(llines$Idx[llines$group == "length"])
+  }else if(count == 3){
+    return(llines$Idx[llines$group == "deamination"])
+  }else if(count == 5){
+    return(llines$Idx[llines$group == "sequencing error"])
+  }
+  return (500)
+}
+
+
+p1 <- ggplot(d3, aes(x=Idx, y=value, color = Classifier)) +
+  geom_vline(data = llines, aes(xintercept = Idx), color=gray(0.9)) +
+  geom_line(size = 1) +
+  theme_classic() +
+  scale_color_manual(values = colours) +
+  ggtitle("Classification") +
+  facet_grid(rows=vars(variable), cols=vars(group), scales="free") +
+  #facet_wrap(category~group, scales="free") +
+  ylab("% reads") +
+  xlab(paste0("             read length in bp            ",
+              "                             ",
+              "single-stranded probability of deamination",
+              "                             ",
+              "      fold increase of substitutions      ")) +
+  guides(fill=guide_legend(title="Classification")) +
+  scale_x_continuous(breaks = breaks_fun) +
+  guides(color=guide_legend(title="Classifier")) +
+  theme(legend.position=c(0.26, 0.39)) +
+  geom_hline(aes(yintercept=-Inf)) + 
+  geom_vline(aes(xintercept=-Inf)) + 
+  coord_cartesian(clip="off") 
+#  theme(axis.line=element_line(),
+#         panel.grid.major = element_line(),
+#        legend.key.height= unit(0.5, 'cm'),
+#        legend.key.width= unit(0.5, 'cm'))
+
+p2 <- addSmallLegend(p1, pointSize = 4, textSize = 9, spaceLegend = 0.4)
+#p1
+
+file <- paste0(folder,"/figure_S04_all_classification.pdf")
+ggsave(file, width = 297, height = 210*3/3, scale=1, units = "mm", p2)
+
+```

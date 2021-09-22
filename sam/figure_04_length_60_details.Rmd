@@ -1,0 +1,187 @@
+---
+  title: "Classifier detailed"
+  output: html_notebook
+---
+  
+
+
+## detected virus
+```{r, eval=T}
+## get data
+plot.detected_viruses <- function(data, title, color1, color2, thres){
+
+  d1 <-NULL
+  for(i in thres){
+    FUN <- function(x)return(sum(x>i))
+    tmp <- data[, list('pres' = FUN(Correct_Sp)), by = c('Classifier')]
+    tmp$thres <- paste0(i, " reads")
+    d1 <- rbind(d1, tmp)
+  }
+  d1$thres[d1$thres == "1 reads"] <- "1 read"
+  
+  d1$thres <- factor(d1$thres, levels = unique(d1$thres))
+  #d1$classifier <- factor(d1$classifier, levels = levels(data$classifier))
+  
+  o4a <- ggplot(d1, aes(x = Classifier, y = pres, fill = thres)) +
+    geom_bar(stat="identity", position = "dodge") +
+    scale_color_manual(values = colours) +
+    theme_classic() +
+    geom_hline(yintercept=250, linetype="dashed") +
+    scale_fill_manual(values = colorRampPalette(c(color1, color2))(length(thres))) +
+    #geom_vline(xintercept=unique(extra$length), color=gray(0.9)) +
+    geom_text(aes(0.5, 250, label = "250 simulated viral sequences", vjust = -0.6, hjust = 0)) +
+    guides(color=guide_legend(title="Classifier")) +
+    geom_text(aes(label = pres), position=position_dodge(width=0.9), 
+              vjust=0.5, hjust = 1.2, cex=3, angle = 90, color = "black") +
+    ggtitle(title) +
+    guides(fill=guide_legend(title="Threshold")) +
+    xlab("") +
+    theme(legend.position=c(0.9, 0.75)) +
+    ylab("# viruses detected") #+
+    #theme(legend.position = "none")
+  o4a
+}
+library(colorspace)
+b04 <-plot.detected_viruses(dataAll[dataAll$Idx=='length_60',c('Classifier','Correct_Sp')], 
+                            "B. Total number of correctly detected viruses", 
+                               colorcillos[1], lighten(colorcillos[1], amount = 0.8), c(1,5,10,20,50))
+b04
+```
+
+## extra taxa
+```{r}
+plot.extra_taxa_mean <- function(extra, title, color1, color2){
+  
+  d <- data.table(reshape2::melt(extra, id.vars = c('Classifier')))
+  
+  d1 <- d[,list("extra"=mean(value)), by=c('Classifier','variable')]
+  
+  ## rename variable
+  d1$variable <- as.character(d1$variable)
+  d1$variable[d1$variable == "1 reads"] <- "1 read"
+  d1$variable <- factor(d1$variable, levels = unique(d1$variable))
+
+  o5a <- ggplot(d1, aes(x = Classifier, y = extra, fill = variable)) +
+    geom_bar(stat="identity", position = "dodge") +
+    scale_color_manual(values = colours) +
+    theme_classic() +
+    scale_fill_manual(values = colorRampPalette(c(color1, color2))(length(thres))) +
+    #geom_vline(xintercept=unique(extra$length), color=gray(0.9)) +
+    #scale_x_continuous("read length in bp", breaks = unique(extra$length)) +
+    guides(color=guide_legend(title="Classifier")) +
+    geom_text(aes(label = round(extra, 1)), position=position_dodge(width=0.9), 
+              vjust=0.5, hjust = 1.2, cex=3, angle = 90, color = "black") +
+    ggtitle(title) +
+    guides(fill=guide_legend(title="Threshold")) +
+    xlab("") +
+    theme(legend.position=c(0.9, 0.75)) +
+    ylab("Mean number of extra taxa") 
+  o5a
+}
+
+thres <- c(1,5,10,20,50)
+columns <- c("Classifier",paste(thres,"reads"))
+c04 <-plot.extra_taxa_mean(dataAll[dataAll$Idx=='length_60', ..columns], 
+                                   "C. Mean number of spurious extra taxa", 
+                                   colorcillos[3], lighten(colorcillos[3], amount = 0.8))
+c04
+
+```
+
+## precision - sensitivity mean
+```{r}
+plot.sensitivity_precision <- function(ee, title, colors){
+
+  ## sensitivity
+  ee$sens <- apply(ee[,3:6],1, function(x)return(x[1]/(sum(x))))
+  ee$sens2 <- apply(ee[,3:6],1, function(x)return((x[1]+x[2])/(sum(x))))
+
+  ## precision
+  ee$prec <- apply(ee[,3:6],1, function(x)return(x[1]/(sum(x[c(1,2,4)]))))
+  ee$prec2 <- apply(ee[,3:6],1, function(x)return((x[1]+x[2])/(sum(x[c(1,2,4)]))))
+  
+  ee <- data.table(ee)
+
+  e <- rbind(ee[,list('Sensitivity' = 100*mean(sens), 'Precision' = 100*mean(prec, na.rm=T), 'Category' = 'species'), 
+                by = 'Classifier'],
+             ee[,list('Sensitivity' = 100*mean(sens2), 'Precision' = 100*mean(prec2, na.rm=T), 'Category' = 'species & higher'),
+                by=Classifier])
+
+  # ee$x[ee$Classifier == "MetaPhlAn2"] <- 40               
+  # ee$x[ee$Classifier == "Centrifuge"] <- 100               
+  # ee$x[ee$Classifier == "Kraken2"] <- 78               
+  # ee$x[ee$Classifier == "DIAMOND"] <- 52   
+  # 
+  # ee$y[ee$Classifier == "Centrifuge"] <- 82               
+  # ee$y[ee$Classifier == "Kraken2"] <- 82   
+  # 
+  ## set the position for the values
+  e$x <- e$Sensitivity
+  e$y <- e$Precision
+  
+  sel <- c('DIAMOND','MetaPhlAn2')
+  e$x[e$Classifier %in% sel & e$Category == "species & higher"] <- 
+    e$x[e$Classifier %in% sel & e$Category == "species & higher"] - 23
+  e$x[e$Classifier %in% sel & e$Category == "species"] <- 
+    e$x[e$Classifier %in% sel & e$Category == "species"] - 20
+  
+  sel <- c('Malt','Centrifuge','Kraken2')
+  e$x[e$Classifier %in% sel] <-  e$x[e$Classifier %in% sel] + 2.5
+  
+  e$y[e$Classifier %in% 'Centrifuge'] <- e$y[e$Classifier %in% 'Centrifuge'] -4
+  e$y[e$Classifier %in% 'Kraken2'] <- e$y[e$Classifier %in% 'Kraken2'] +1
+
+  e$text <- ifelse(e$Category == "species", 
+                                 paste0("Sensitivity_s: ", round(e$Sensitivity,1), 
+                                        "%\nPrecision_s: ", round(e$Precision,1), "%"),
+                                 paste0("Sensitivity_s&h: ", round(e$Sensitivity,1), 
+                                        "%\nPrecision_s&h: ", round(e$Precision,1), "%"))
+
+  ## set the position for the classifier names
+  eee <- data.frame('Classifier' = e$Classifier[e$Category == "species"], 
+                   'x' = (e$Sensitivity[e$Category == "species"] + e$Sensitivity[e$Category == "species & higher"]) / 2,
+                   'y' = (e$Precision[e$Category == "species"] + e$Precision[e$Category == "species & higher"]) / 2,
+                   'Category' = "species")
+  eee$Classifier <- factor(eee$Classifier, levels = levels(e$Classifier))
+  
+  eee$x[eee$Classifier == "MetaPhlAn2"] <- eee$x[eee$Classifier == "MetaPhlAn2"] -20
+  eee$x[eee$Classifier == "DIAMOND"] <- eee$x[eee$Classifier == "DIAMOND"] -10
+  eee$x[eee$Classifier == "Centrifuge"] <- eee$x[eee$Classifier == "Centrifuge"] -15
+  eee$x[eee$Classifier == "Kraken2"] <- eee$x[eee$Classifier == "Kraken2"] -7
+  eee$y[eee$Classifier == "Kraken2"] <- 100
+  
+  
+  ggplot(e, aes(x = Sensitivity, y = Precision, color = Classifier, shape = Category)) +
+    theme_classic() +
+    geom_point(size = 7) +
+    ylab("Mean precision") +
+    ylim(40,100) +
+    geom_text(aes(x = x, y = y, label = text), hjust = 0, cex=3.5) +
+    geom_text(data = eee, aes(x = x, y = y, label = Classifier), size=8) +
+    scale_color_manual(values = colors) +
+    ggtitle(title) +
+    guides(color=F, shape=guide_legend(title="Considered correct")) +
+    scale_x_continuous("Mean sensitivity", breaks = seq(0,100, 10), labels = seq(0,100, 10), limits = c(0, 100)) +
+    theme(legend.position=c(0.93, 0.17),
+        panel.grid.major = element_line(),
+        plot.margin=unit(c(5.5, 72, 5.5, 5.5), "points")) +
+    coord_cartesian(clip = "off")
+  
+
+}
+
+a04 <- plot.sensitivity_precision(
+  dataAll[dataAll$Idx=='length_60',c('GenBankID','Classifier','Correct species','Correct higher','Unclassified','Incorrect')], 
+  "A. Sensitivity vs. precision", color.classifers)
+a04
+#```
+
+## figure 04 length 60 details
+#```{r}
+
+lay <- rbind(c(1,1),c(2,3))
+grob <- grid.arrange(grobs=list(a04, b04, c04), layout_matrix=lay)   
+ggsave(paste0(folder,"/figure_04_length_60_details.pdf"), width = 297, height = 297, scale=0.8, units = "mm", grob)
+
+
+```
