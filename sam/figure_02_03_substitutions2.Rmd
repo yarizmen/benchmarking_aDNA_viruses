@@ -1,0 +1,257 @@
+---
+title: "Figure 02 03 Substitutions"
+output: html_notebook
+---
+
+
+```{r, eval=T}
+library(data.table)
+path <- "/Users/sneuensc/Sapfo/virome_yami/analyses_review/substitutions/yami/"
+
+
+files <- list.files(path, "mismatches_HuBHV5_")
+data1 <- NULL
+for(i in files){
+  tmp <- fread(paste0(path, i))
+  #tmp2 <- data.frame(table(tmp$V2))
+  data1 <- rbind(data1, c(sum(tmp$V1) / nrow(tmp), i))
+}
+
+
+files <- list.files(path, "Total_Match_Mismatch_CIGAR_HuBHV5_")
+for(i in files){
+  tmp <- fread(paste0(path, i))
+  #tmp2 <- data.frame(table(tmp$V2))
+  data1 <- rbind(data1, c(sum(tmp$V2) / nrow(tmp), i))
+}
+data1 <- data.table(data1)
+data1$V1 <- as.numeric(data1$V1)
+
+data1$V1[1:3] <- data1$V1[1:3] + data1$V1[4]
+colnames(data1) <- c("sub","length")
+
+to.error <- function(x)return(round(1/(10^(x/10)),1))
+data1$length <- c(0, 0.25, 0.5, paste0(to.error(c(0,-5,-9)) , " (", c(0, -5, -9), ")") )
+data1$category <- c(rep("deamination", 3), rep("sequencing_error", 3))
+```
+
+```{r, eval=F}
+path <- "/Users/sneuensc/Sapfo/virome_yami/analyses_review/substitutions/"
+
+deam <- paste0('deam_',c(0, 0.25, 0.5))
+err <- paste0('qShift_',c(0, 5, 9))
+
+data3 <- NULL
+for(i in c(deam, err)){
+  tmp <- fread(paste0(path, "/", i, "_results_mapDamage/misincorporation.txt"))
+  # data2 <- tmp
+  # data2$`G>A`<-tmp$`G>A`/tmp$G
+  # data2$`C>T`<-tmp$`C>T`/tmp$C
+  # data2$`A>G`<-tmp$`A>G`/tmp$A
+  # data2$`T>C`<-tmp$`T>C`/tmp$T
+  # data2$`A>C`<-tmp$`A>C`/tmp$A
+  # data2$`A>T`<-tmp$`A>T`/tmp$A
+  # data2$`C>G`<-tmp$`C>G`/tmp$C
+  # data2$`C>A`<-tmp$`C>A`/tmp$C
+  # data2$`T>G`<-tmp$`T>G`/tmp$T
+  # data2$`T>A`<-tmp$`T>A`/tmp$T
+  # data2$`G>C`<-tmp$`G>C`/tmp$G
+  # data2$`G>T`<-tmp$`G>T`/tmp$G
+  # data3 <- rbind(data3, mean(apply(data2[tmp$End=="5p" & data2$Std=="+", 10:21], 1, sum)), i)
+  data3 <- rbind(data3, c(sum(tmp[1:120, 10:21]) / (tmp$Total[1] + tmp$Total[61]), i))
+}
+data3 <- data.table(data3)
+data3$cat <- c(rep("deamination", length(deam)), rep("sequencing_error", length(err)))
+colnames(data3) <- c(c("sub","length","category"))
+data3$length <- c('0','0.25','0.5','1 (0)','5 (-7)','7.9 (-9)')
+data3$sub <- as.numeric(data3$sub)
+```
+
+
+```{r}
+library(ggplot2)
+data3 <- data1
+ymax <- max(data3$sub)
+b <- ggplot(data3[data3$category=='sequencing_error',], aes(x = length, y = sub)) +
+  geom_bar(stat="identity") +
+  geom_text(aes(label = round(sub,2)), position=position_dodge(width=0.9), vjust=-0.25, cex=3.5) +
+  xlab("fold increase of substitutions (qShift)") +
+  ylab("Mean number of substitutions [per 60bp]") +
+  ylim(0,ymax) +
+  theme_classic() +
+  ggtitle("B. Sequencing error simulations") +
+  theme(panel.grid.major.y = element_line())
+
+a <- ggplot(data3[data3$category=='deamination',], aes(x = length, y = sub)) +
+  geom_bar(stat="identity") +
+  geom_text(aes(label = round(sub,2)), position=position_dodge(width=0.9), vjust=-0.25, cex=3.5) +
+  xlab("single-stranded probability of deamination") +
+  ylab("Mean number of substitutions [per 60bp]") +
+  ylim(0,ymax) +
+  theme_classic() +
+  theme(panel.grid.major.y = element_line()) +
+  ggtitle("A. Deamination simulations")
+
+folder <- "/Users/sneuensc/Sapfo/virome_yami/analyses_review"
+library(gridExtra)
+library(grid)
+
+lay <- cbind(1,2)
+grob <- grid.arrange(grobs=list(a, b), layout_matrix=lay)   
+
+
+
+ggsave(paste0(folder,"/figure_03_substitutions.pdf"), width = 297, height = 210, scale=0.8, units = "mm", grob)
+```
+
+## plot deamination 
+```{r}
+library(data.table)
+
+plot.deamination <- function(data2, title, y.max=NULL, legend=T, xlab=T){
+  ## 5' plot
+  d<-data2[data2$End=="5p" & data2$Std=="+" & data2$Pos<=25, c(4,10:21)]
+  if(is.null(y.max)) y-max <- max<-max(d[,10:21])
+  range.y <- c(0, y.max)
+  
+  d <- melt(d, 1)
+  p1 <- ggplot(d, aes(x=Pos, y=value, group=variable)) +
+    geom_line(size=1, color="gray") +
+    geom_line(data=subset(d, variable == 'C>T'), size=1, color="orange") +
+    geom_line(data=subset(d, variable == 'G>A'), size=1, color="blue") +
+    ylim(range.y) +
+    ylab("frequency") +
+    theme_classic() 
+  
+  if(legend){
+    p1 <- p1 + geom_text(x=mean(d$Pos), y=0.95*max(range.y), label="C>T", color="orange", #fontface="bold",
+                         size=6) 
+  }
+  
+  if(xlab){
+    p1 <- p1 + xlab("position from 5' end")
+  } else {
+    p1 <- p1 + xlab("")    
+  }
+  
+  ## 3p +
+  d<-data2[data2$End=="3p" & data2$Std=="+" & data2$Pos<=25, c(4,10:21)]
+  max<-max(d$`G>A`)
+  
+  d <- melt(d, 1)
+  p2 <- ggplot(d, aes(x=Pos, y=value, group=variable)) +
+    geom_line(size=1, color="gray") +
+    geom_line(data=subset(d, variable == 'C>T'), size=1, color="orange") +
+    geom_line(data=subset(d, variable == 'G>A'), size=1, color="blue") +
+    ylab("frequency") +
+    theme_classic() +
+    scale_y_continuous(lim=range.y, position = "right") +
+    scale_x_reverse()
+  
+  if(legend){
+    p2 <- p2 + geom_text(x=-mean(d$Pos), y=0.95*max(range.y), label="G>A", color="blue", #fontface="bold",
+                         size=6) 
+  }
+  
+  if(xlab){
+    p2 <- p2 + xlab("position from 3' end")
+  } else {
+    p2 <- p2 + xlab("")    
+  }
+  
+  ## combine plots
+  my_plot <- grid.arrange(grobs=list(p1, p2), ncol=2, top = paste(title))   
+  my_plot
+}
+
+
+path <- "/Users/sneuensc/Sapfo/virome_yami/analyses_review/substitutions/"
+
+deam <- paste0('deam_',c(0, 0.25, 0.5))
+
+dd<-list()
+for(i in deam){
+  print(i)
+  data<-fread(paste0(path, "/", i, "_results_mapDamage/misincorporation.txt"))
+  data2 <- data
+  data2$`G>A`<-data$`G>A`/data$G
+  data2$`C>T`<-data$`C>T`/data$C
+  data2$`A>G`<-data$`A>G`/data$A
+  data2$`T>C`<-data$`T>C`/data$T
+  data2$`A>C`<-data$`A>C`/data$A
+  data2$`A>T`<-data$`A>T`/data$A
+  data2$`C>G`<-data$`C>G`/data$C
+  data2$`C>A`<-data$`C>A`/data$C
+  data2$`T>G`<-data$`T>G`/data$T
+  data2$`T>A`<-data$`T>A`/data$T
+  data2$`G>C`<-data$`G>C`/data$G
+  data2$`G>T`<-data$`G>T`/data$G
+  dd[[i]] <- data2
+}
+
+
+y.max <- max(dd[[3]][,10:21])
+aw1 <- plot.deamination(dd[[1]], "0 deamination in single-strand parts", y.max, T, F)
+aw2 <- plot.deamination(dd[[2]], "0.25 deamination in single-strand parts", y.max, F, F)
+aw3 <- plot.deamination(dd[[3]], "0.5 deamination in single-strand parts", y.max, F, T)
+
+lay <- rbind(c(1),
+             c(2),
+             c(3))
+grob <- grid.arrange(grobs=list(aw1,aw2,aw3), layout_matrix=lay)   
+
+file <- paste0(folder,"/figure_02_deamination_pattern.pdf")
+ggsave(file, width = 297, height = 210*3/3, scale=1, units = "mm", grob)
+```
+```{r}
+
+prime5 <- data.table(Pos=dd[[1]][data2$End=="5p" & data2$Std=="+" & data2$Pos<=25,]$Pos)
+prime3 <- data.table(Pos=dd[[1]][data2$End=="3p" & data2$Std=="+" & data2$Pos<=25,]$Pos)
+for(i in dd){
+  prime5 <- cbind(prime5, i[data2$End=="5p" & i$Std=="+" & i$Pos<=25,]$'C>T')
+  prime3 <- cbind(prime3, i[data2$End=="3p" & i$Std=="+" & i$Pos<=25,]$'G>A')
+}
+colnames(prime5)[-1] <- paste(c(0,0.25,0.5), "deamination in single−strand parts")
+colnames(prime3)[-1] <- paste(c(0,0.25,0.5), "deamination in single−strand parts")
+colnames(prime5)[-1] <- c(0,0.25,0.5)
+colnames(prime3)[-1] <- c(0,0.25,0.5)
+
+range.y <- c(0, max(prime5[,-1], prime3[,-1]))
+
+## 5' plot
+d <- melt(prime5, 1)
+p1 <- ggplot(d, aes(x=Pos, y=value, group=variable, color=variable)) +
+  geom_line(size = 1) +
+  theme_classic() +
+  geom_hline(yintercept=0, color="gray") +
+  ylim(range.y) +
+  ylab("frequency") +
+  geom_text(x=mean(d$Pos), y=0.95*max(range.y), label="C>T", size=6, color = "black") +
+  xlab("position from 5' end") +
+  theme(legend.position="none") 
+
+
+## 3' plot
+d <- melt(prime3, 1)
+p2 <- ggplot(d, aes(x=Pos, y=value, group=variable, color=variable)) +
+  geom_line(size=1) +
+  geom_hline(yintercept=0, color="gray") +
+  ylab("frequency") +
+  theme_classic() +
+  guides(color=guide_legend(title="Deamination in single strand parts")) +
+  scale_y_continuous(lim=range.y, position = "right") +
+  geom_text(x=-mean(d$Pos), y=0.95*max(range.y), label="G>A", size=6, color = "black") +
+  xlab("position from 3' end") +
+  theme(legend.position=c(0,0.5))+
+  scale_x_reverse()
+
+
+## combine plots
+my_plot <- grid.arrange(grobs=list(p1, p2), ncol=2, top = paste(title))   
+my_plot
+
+file <- paste0(folder,"/figure_02_deamination_pattern2.pdf")
+ggsave(file, width = 297, height = 210*2/3, scale=1, units = "mm", my_plot)
+
+```
+
