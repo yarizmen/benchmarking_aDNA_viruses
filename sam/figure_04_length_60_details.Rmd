@@ -1,15 +1,15 @@
 ---
-  title: "Classifier detailed"
+  title: "Figure 04 length 60bp Classifier detailed"
   output: html_notebook
 ---
-  
 
-
-## detected virus
+## detected virus (only at 1 read threshold)
 ```{r, eval=T}
 ## get data
-plot.detected_viruses <- function(data, title, color1, color2, thres){
-
+plot.detected_viruses2 <- function(data, title, color1, thres){
+  
+  max.taxa <- data[,.N, by=Classifier]$N[1]
+  
   d1 <-NULL
   for(i in thres){
     FUN <- function(x)return(sum(x>i))
@@ -26,162 +26,113 @@ plot.detected_viruses <- function(data, title, color1, color2, thres){
     geom_bar(stat="identity", position = "dodge") +
     scale_color_manual(values = colours) +
     theme_classic() +
-    geom_hline(yintercept=250, linetype="dashed") +
-    scale_fill_manual(values = colorRampPalette(c(color1, color2))(length(thres))) +
+    geom_hline(yintercept=max.taxa, linetype="dashed") +
+    scale_fill_manual(values = color1) +
     #geom_vline(xintercept=unique(extra$length), color=gray(0.9)) +
-    geom_text(aes(0.5, 250, label = "250 simulated viral sequences", vjust = -0.6, hjust = 0)) +
-    guides(color=guide_legend(title="Classifier")) +
+    geom_text(aes(length(table(d1$Classifier))+0.5, max.taxa, 
+                  label = paste(max.taxa,"simulated viral sequences"), vjust = -0.6, hjust = 1)) +
+    #guides(color=guide_legend(title="Classifier")) +
     geom_text(aes(label = pres), position=position_dodge(width=0.9), 
-              vjust=0.5, hjust = 1.2, cex=3, angle = 90, color = "black") +
+              vjust=1.5, hjust = 0.5, cex=3, color = "white") +
     ggtitle(title) +
-    guides(fill=guide_legend(title="Threshold")) +
+    #guides(fill=guide_legend(title="Threshold")) +
     xlab("") +
-    theme(legend.position=c(0.9, 0.75)) +
+    theme(legend.position = "none") +
     ylab("# viruses detected") #+
-    #theme(legend.position = "none")
+  #theme(legend.position = "none")
   o4a
 }
-library(colorspace)
-b04 <-plot.detected_viruses(dataAll[dataAll$Idx=='length_60',c('Classifier','Correct_Sp')], 
-                            "B. Total number of correctly detected viruses", 
-                               colorcillos[1], lighten(colorcillos[1], amount = 0.8), c(1,5,10,20,50))
-b04
 ```
 
-## extra taxa
+## extra taxa 3 (only 1 read as threshold)
 ```{r}
-plot.extra_taxa_mean <- function(extra, title, color1, color2){
+plot.extra_taxa_mean3 <- function(extra, title, colors){
   
-  d <- data.table(reshape2::melt(extra, id.vars = c('Classifier')))
+  d <- extra
+  d$extra2 <- apply(d[,-1], 1, sum)
   
-  d1 <- d[,list("extra"=mean(value)), by=c('Classifier','variable')]
+  d1 <- d[,list("extra"=mean(extra2, na.rm=T)), by=c('Classifier')]
+  print(d1)
   
-  ## rename variable
-  d1$variable <- as.character(d1$variable)
-  d1$variable[d1$variable == "1 reads"] <- "1 read"
-  d1$variable <- factor(d1$variable, levels = unique(d1$variable))
-
-  o5a <- ggplot(d1, aes(x = Classifier, y = extra, fill = variable)) +
-    geom_bar(stat="identity", position = "dodge") +
-    scale_color_manual(values = colours) +
-    theme_classic() +
-    scale_fill_manual(values = colorRampPalette(c(color1, color2))(length(thres))) +
-    #geom_vline(xintercept=unique(extra$length), color=gray(0.9)) +
-    #scale_x_continuous("read length in bp", breaks = unique(extra$length)) +
-    guides(color=guide_legend(title="Classifier")) +
-    geom_text(aes(label = round(extra, 1)), position=position_dodge(width=0.9), 
-              vjust=0.5, hjust = 1.2, cex=3, angle = 90, color = "black") +
+  ggplot(d1, aes(y=extra, x=Classifier)) + 
+    geom_bar(position = "stack", stat = "identity", fill= "orange") + 
     ggtitle(title) +
-    guides(fill=guide_legend(title="Threshold")) +
-    xlab("") +
-    theme(legend.position=c(0.9, 0.75)) +
-    ylab("Mean number of extra taxa") 
-  o5a
+    ylab("Mean number of extra taxa")  +
+    xlab("")  +
+    #scale_fill_manual(values = colors) +
+    geom_text(aes(label = sprintf("%.2f", extra)), position=position_dodge(width=0.9), 
+              vjust=1.5, hjust = 0.5, cex=3, color = "white") +
+    theme_classic() 
+  #theme(legend.position=c(0.85, 0.75))
+  #theme(legend.position=c(0.2, 0.75))
+  
 }
-
-thres <- c(1,5,10,20,50)
-columns <- c("Classifier",paste(thres,"reads"))
-c04 <-plot.extra_taxa_mean(dataAll[dataAll$Idx=='length_60', ..columns], 
-                                   "C. Mean number of spurious extra taxa", 
-                                   colorcillos[3], lighten(colorcillos[3], amount = 0.8))
-c04
-
 ```
 
 ## precision - sensitivity mean
 ```{r}
-plot.sensitivity_precision <- function(ee, title, colors){
-
+plot.sensitivity_precision2 <- function(d, title, colors){
+  
   ## sensitivity
-  ee$sens <- apply(ee[,3:6],1, function(x)return(x[1]/(sum(x))))
-  ee$sens2 <- apply(ee[,3:6],1, function(x)return((x[1]+x[2])/(sum(x))))
-
+  d$sens <- d$`Correct species`/
+    (d$`Correct species` + d$`Correct higher` + d$Unclassified + d$Incorrect)
+  d$sens2 <- (d$`Correct species` + d$`Correct higher`) /
+    (d$`Correct species` + d$`Correct higher` + d$Unclassified + d$Incorrect)
+  
   ## precision
-  ee$prec <- apply(ee[,3:6],1, function(x)return(x[1]/(sum(x[c(1,2,4)]))))
-  ee$prec2 <- apply(ee[,3:6],1, function(x)return((x[1]+x[2])/(sum(x[c(1,2,4)]))))
+  d$prec <- d$`Correct species`/
+    (d$`Correct species` + d$`Correct higher` + d$Incorrect)
+  d$prec2 <- (d$`Correct species` + d$`Correct higher`) /
+    (d$`Correct species` + d$`Correct higher` + d$Incorrect)
   
-  ee <- data.table(ee)
+  e <- rbind(d[,list('Sensitivity' = 100*mean(sens), 
+                     'Precision' = 100*mean(prec, na.rm=T), 'Category' = 'species'), 
+               by = 'Classifier'],
+             d[,list('Sensitivity' = 100*mean(sens2), 
+                     'Precision' = 100*mean(prec2, na.rm=T), 'Category' = 'species & higher'),
+               by=Classifier])
 
-  e <- rbind(ee[,list('Sensitivity' = 100*mean(sens), 'Precision' = 100*mean(prec, na.rm=T), 'Category' = 'species'), 
-                by = 'Classifier'],
-             ee[,list('Sensitivity' = 100*mean(sens2), 'Precision' = 100*mean(prec2, na.rm=T), 'Category' = 'species & higher'),
-                by=Classifier])
-
-  # ee$x[ee$Classifier == "MetaPhlAn2"] <- 40               
-  # ee$x[ee$Classifier == "Centrifuge"] <- 100               
-  # ee$x[ee$Classifier == "Kraken2"] <- 78               
-  # ee$x[ee$Classifier == "DIAMOND"] <- 52   
-  # 
-  # ee$y[ee$Classifier == "Centrifuge"] <- 82               
-  # ee$y[ee$Classifier == "Kraken2"] <- 82   
-  # 
-  ## set the position for the values
-  e$x <- e$Sensitivity
-  e$y <- e$Precision
-  
-  sel <- c('DIAMOND','MetaPhlAn2')
-  e$x[e$Classifier %in% sel & e$Category == "species & higher"] <- 
-    e$x[e$Classifier %in% sel & e$Category == "species & higher"] - 23
-  e$x[e$Classifier %in% sel & e$Category == "species"] <- 
-    e$x[e$Classifier %in% sel & e$Category == "species"] - 20
-  
-  sel <- c('Malt','Centrifuge','Kraken2')
-  e$x[e$Classifier %in% sel] <-  e$x[e$Classifier %in% sel] + 2.5
-  
-  e$y[e$Classifier %in% 'Centrifuge'] <- e$y[e$Classifier %in% 'Centrifuge'] -4
-  e$y[e$Classifier %in% 'Kraken2'] <- e$y[e$Classifier %in% 'Kraken2'] +1
-
-  e$text <- ifelse(e$Category == "species", 
-                                 paste0("Sensitivity_s: ", round(e$Sensitivity,1), 
-                                        "%\nPrecision_s: ", round(e$Precision,1), "%"),
-                                 paste0("Sensitivity_s&h: ", round(e$Sensitivity,1), 
-                                        "%\nPrecision_s&h: ", round(e$Precision,1), "%"))
-
-  ## set the position for the classifier names
-  eee <- data.frame('Classifier' = e$Classifier[e$Category == "species"], 
-                   'x' = (e$Sensitivity[e$Category == "species"] + e$Sensitivity[e$Category == "species & higher"]) / 2,
-                   'y' = (e$Precision[e$Category == "species"] + e$Precision[e$Category == "species & higher"]) / 2,
-                   'Category' = "species")
-  eee$Classifier <- factor(eee$Classifier, levels = levels(e$Classifier))
-  
-  eee$x[eee$Classifier == "MetaPhlAn2"] <- eee$x[eee$Classifier == "MetaPhlAn2"] -20
-  eee$x[eee$Classifier == "DIAMOND"] <- eee$x[eee$Classifier == "DIAMOND"] -10
-  eee$x[eee$Classifier == "Centrifuge"] <- eee$x[eee$Classifier == "Centrifuge"] -15
-  eee$x[eee$Classifier == "Kraken2"] <- eee$x[eee$Classifier == "Kraken2"] -7
-  eee$y[eee$Classifier == "Kraken2"] <- 100
-  
-  
-  ggplot(e, aes(x = Sensitivity, y = Precision, color = Classifier, shape = Category)) +
+  p1 <- ggplot(e, aes(x = Sensitivity, y = Precision, color = Classifier, shape = Category)) +
     theme_classic() +
     geom_point(size = 7) +
-    ylab("Mean precision") +
-    ylim(40,100) +
-    geom_text(aes(x = x, y = y, label = text), hjust = 0, cex=3.5) +
-    geom_text(data = eee, aes(x = x, y = y, label = Classifier), size=8) +
     scale_color_manual(values = colors) +
     ggtitle(title) +
-    guides(color=F, shape=guide_legend(title="Considered correct")) +
-    scale_x_continuous("Mean sensitivity", breaks = seq(0,100, 10), labels = seq(0,100, 10), limits = c(0, 100)) +
-    theme(legend.position=c(0.93, 0.17),
-        panel.grid.major = element_line(),
-        plot.margin=unit(c(5.5, 72, 5.5, 5.5), "points")) +
+    guides(color=guide_legend(title="Classifier")) +
+    scale_shape_discrete(name = "Considered correct", labels = c("species", "species & higher")) +
+    scale_x_continuous("Mean sensitivity", breaks = seq(0,100, 10), labels = seq(0,100, 10), limits = c(0, 100)) +     scale_y_continuous("Mean precision", breaks = seq(40,100, 10), labels = seq(40,100, 10), limits = c(40, 100)) +
+    theme(legend.position=c(0.9, 0.32),
+          panel.grid.major = element_line()) +
     coord_cartesian(clip = "off")
   
-
+  p1 <- addSmallLegend(p1, pointSize = 3, textSize = 9, spaceLegend = 0.6)
+  p1
 }
 
-a04 <- plot.sensitivity_precision(
+```
+
+
+## figure 03 length 60 details
+```{r}
+library("gridExtra")
+
+a04 <- plot.sensitivity_precision2(
   dataAll[dataAll$Idx=='length_60',c('GenBankID','Classifier','Correct species','Correct higher','Unclassified','Incorrect')], 
   "A. Sensitivity vs. precision", color.classifers)
-a04
-#```
 
-## figure 04 length 60 details
-#```{r}
+library(colorspace)
+b04 <-plot.detected_viruses2(dataAll[dataAll$Idx=='length_60',c('Classifier','Correct_Sp')], 
+                             "B. Total number of correctly detected viruses", 
+                             colorcillos[1], 1)
+library("RColorBrewer")
+names <- paste0(rank.taxa, "_nb.taxa_1")
+columns <- c("Classifier",names)
+c04 <-plot.extra_taxa_mean3(dataAll[dataAll$Idx=='length_60', ..columns], 
+                            "C. Mean number of spurious extra taxa", 
+                            brewer.pal(n = length(rank.taxa), name = 'Set1'))
+
 
 lay <- rbind(c(1,1),c(2,3))
 grob <- grid.arrange(grobs=list(a04, b04, c04), layout_matrix=lay)   
 ggsave(paste0(folder,"/figure_04_length_60_details.pdf"), width = 297, height = 297, scale=0.8, units = "mm", grob)
-
 
 ```

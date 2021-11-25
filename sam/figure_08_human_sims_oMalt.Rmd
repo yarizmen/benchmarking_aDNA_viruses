@@ -1,0 +1,193 @@
+---
+title: "Figure_08_human_sims"
+output: html_notebook
+---
+
+## get data
+```{r}
+
+## 1. Number of counts (how many reads were assigned to “x” taxa)
+## 2. taxID
+## 3. taxID (as a double-check and because some taxIDs are deprecated)
+## 4. Taxa name
+## 5. Taxa rank
+## 6. Classification: is it correct at species, correct at higher or incorrect?
+## 7. How many taxa far away from the correct one? If it’s correct at species level this number is 0, and if it’s incorrect it is also 0.
+
+
+
+library(data.table)
+library(ggplot2)
+
+
+classifiers <- c("Centrifuge", "Kraken2", "MALT", "DIAMOND", "MetaPhlAn2")
+classifiers <- c("Centrifuge", "Kraken2", "DIAMOND", "MetaPhlAn2")
+classifications <- c('Correct_species','Correct_higher','Incorrect','Unclassified')
+folder <- "/Users/sneuensc/Sapfo/virome_yami/analyses_review"
+sqlFile='accessionTaxa.sql'
+
+
+## read the raw files
+data <-NULL
+for(i in classifiers){
+  print(i)
+  tmp <- fread(paste0(folder, "/human_sims/", i, "_human_sims_count_table.tsv"))
+  if(i=="MALT"){
+    tmp <- tmp[,2:1]
+    colnames(tmp) <- c("V1", "V2")
+  }
+  tmp$Classifier <- i
+  data <- rbind(data, tmp)
+}
+data <- data[data$V2>0,] ## remove 0 and -2 taxID (i.e., unclassified)
+colnames(data) <-c('reads','taxID','Classifier')
+data$Classifier <- factor(data$Classifier, levels=classifiers)
+
+## get classification
+true.taxa <- read.table(paste0(folder,"/human_sims/9606_taxIDs.txt"), sep="\t")$V1
+
+## add the total number of reads
+reads.tot <-476876980
+
+data$classification[data$taxID %in% true.taxa[-1]] <- "Correct_higher"
+data$classification[data$taxID %in% true.taxa[1]] <- "Correct_species"
+data$classification[!data$taxID %in% true.taxa] <- "Incorrect"
+
+## add the number of unclassified
+dd <- data[,list('reads' = reads.tot - sum(reads)), by = 'Classifier']
+dd$classification <- "Unclassified"
+dd$taxID = "NaN"
+dd <- dd[,c('reads','taxID','Classifier','classification')]
+data <- rbind(data, dd)
+
+## add the number of correctly classified, if missing
+if(! 'Correct_species' %in% names(table(data$classification))){
+  data <- rbind(data, data.table('reads'=0, 'taxID'="NaN", 'Classifier'="Centrifuge", 'classification'="Correct_species"))
+}
+
+## add the number of correct-higher classified, if missing
+if(! 'Correct_higher' %in% names(table(data$classification))){
+  data <- rbind(data, data.table('reads'=0, 'taxID'="NaN", 'Classifier'="Centrifuge", 'classification'="Correct_higher"))
+}
+
+data$classification <- factor(data$classification, levels =classifications)
+
+## replace missing values with 0
+for(c in unique(data$classification)){
+  for(l in unique(data$Classifier)){
+    if(length(data$reads[data$classification == c & data$Classifier == l]) == 0){
+      data <- rbind(data, list('reads' = 0, 'taxID' = NaN, 'Classifier' = l, 'classification' = c))
+    }
+  }
+}
+
+```
+
+
+## extra taxa of incorrect classifications
+```{r}
+get_human_classifications <- function(d){
+  
+  d$Classification <- as.character(d$classification)
+  d$Classification[d$Classification == "Correct_species"] <- "Correct species\n(classified as human)"
+  d$Classification[d$Classification == "Correct_higher"] <- "Correct higher"
+  d$Classification <- factor(d$Classification, levels = c("Correct species\n(classified as human)","Correct higher","Incorrect","Unclassified"))
+  
+  d1 <- d[,list('reads'=sum(reads)), by=c('Classifier','Classification')]
+  d1$props <- 100 * d1$reads / reads.tot
+  d1$props2 <- d1$props 
+  d1$props2[d1$props == 0] <- NaN
+  d1$props2 <- as.character(sprintf("%.2f", d1$props))
+  
+  p1 <- ggplot(d1, aes(y = props, fill = Classification, x = Classifier)) +
+    geom_bar(stat="identity", position = position_dodge(preserve = "single")) +
+    scale_fill_manual(values = colorcillos) +
+    scale_color_manual(values = colorcillos) +
+    geom_text(aes(label = props2, 
+                  color = Classification), 
+              #color = ifelse(tmp$props > 50, Classification, "black")), 
+              position=position_dodge(width=0.9), 
+              hjust = ifelse(d1$props > 50, 1.1, -0.1),
+              vjust=0.5, cex=3.5, angle=90) +
+    geom_text(aes(label = ifelse(d1$props > 50, props2, "")), 
+              #color = ifelse(tmp$props > 50, 'black', 'blue'), 
+              position=position_dodge(width=0.9), 
+              hjust = ifelse(d1$props > 50, 1.1, -0.1),
+              vjust=0.5, cex=3.5, angle=90) +
+    ylab("% reads") +
+    xlab("") +
+    ylim(0,100) +
+    ggtitle(title) +
+    theme_classic() +
+    theme(legend.position=c(0.75, 0.5),
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+    ggtitle("A. Classification")
+  
+  p1
+}
+a1 <- get_human_classifications(data)
+a1
+```
+
+```{r}
+
+get_human_incorrect_reads <- function(d){
+  d1 <- d[,list('reads'=sum(reads)), by=c('Classifier','classification')]
+  
+  p1 <- ggplot(d1[d1$classification == "Incorrect",], 
+               aes(y = reads, x = Classifier)) +
+    geom_bar(stat="identity", position = position_dodge(preserve = "single"), fill = colorcillos[3]) +
+    geom_text(aes(label = reads), position=position_dodge(width=0.9), vjust=-0.25, cex=3.5) +
+    ylab("# incorrectly classified reads") +
+    xlab("") +
+    #ylim(0,100) +
+    ggtitle(title) +
+    #scale_y_log10() +
+    #guides(fill=guide_legend(title="Cleaning")) +
+    theme_classic() +
+    theme(legend.position=c(0.3, 0.8),
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+    ggtitle("B. Incorrectly classified reads")
+  
+  p1
+}
+
+a2 <- get_human_incorrect_reads(data)
+```
+
+```{r}
+get_human_extra_taxa <- function(d){
+  d1 <- d[,list('nb.taxa'=.N), by=c('Classifier','classification')]
+  
+  p1 <- ggplot(d1[d1$classification == "Incorrect",], 
+               aes(y = nb.taxa, x = Classifier)) +
+    geom_bar(stat="identity", position = position_dodge(preserve = "single")) +
+    scale_fill_manual(values = colors_bw) +
+    geom_text(aes(label = nb.taxa), position=position_dodge(width=0.9), vjust=-0.25, cex=3.5) +
+    ylab("# spurious extra taxa") +
+    xlab("") +
+    ggtitle(title) +
+    guides(fill=guide_legend(title="Cleaning")) +
+    theme_classic() +
+    theme(legend.position=c(0.7, 0.8),
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+    ggtitle("C. Spurious extra taxa")
+  
+  p1
+}
+a3 <- get_human_extra_taxa(data)
+```
+
+```{r}
+file <- "/Users/sneuensc/Dropbox (popgen)/Virome/PLoS_ONE_virome/sam/figure_human_sims2.pdf"
+library(gridExtra)
+library(grid)
+
+lay <- rbind(c(1,1,2,3))
+grob <- grid.arrange(grobs=list(a1, a2, a3), layout_matrix=lay)   
+
+ggsave(paste0(folder,"/figure_08_human_sims.pdf"), width = 297, height = 210*2/3, scale=1.1, units = "mm", grob)
+```
+
+
+
