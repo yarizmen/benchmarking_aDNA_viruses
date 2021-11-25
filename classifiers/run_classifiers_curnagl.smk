@@ -37,7 +37,7 @@ rule run_Centrifuge:
         database = config['path2Centrifuge_db'],
         assign = 1
     resources:
-        memory = 36000
+        memory = 50000
     threads: 5
     benchmark:
         "benchmarks/Centrifuge/{sample}/{sample}.benchmark.txt"
@@ -83,7 +83,7 @@ rule run_Kraken2:
         runtime = "10:00:00",
         database = config['path2Kraken2_db']
     resources:
-        memory = 54000
+        memory = 80000
     threads: 5
     benchmark:
         "benchmarks/Kraken2/{sample}/{sample}.benchmark.txt"
@@ -130,11 +130,12 @@ rule run_DIAMOND:
     output:
         "DIAMOND_output/{sample}/{sample}_tax.txt"
     params:
-        runtime = "10:00:00",
+        runtime = "40:00:00",
         mode = 'blastx',
         database = config['path2DIAMOND_db']
+        # seed_shape = config['seed_shape']
     resources:
-        memory = 24000 
+        memory = 26000 
     threads: 5
     benchmark:
         "benchmarks/DIAMOND/{sample}/{sample}.benchmark.txt"
@@ -142,9 +143,10 @@ rule run_DIAMOND:
         "logs/DIAMOND/{sample}/{sample}_run_DIAMOND.log"
     shell:
         '''
-        diamond {params.mode} -p {threads} -d {params.database} -q {input} -o {output} \
-        -f 102
+        diamond {params.mode} -p {threads} -d {params.database} -q {input} \
+        -o {output} -f 102
         '''
+        # --shape-mask {params.seed_shape}
 
 rule reads_per_taxon_DIAMOND:
     input:

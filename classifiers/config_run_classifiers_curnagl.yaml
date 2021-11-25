@@ -19,6 +19,7 @@ path2DIAMOND_db: '/work/FAC/FBM/DBC/amalaspi/popgen/yarizmen/from_wally/virome/s
 
 # MetaPhlAn2
 path2MetaPhlAn2: '/work/FAC/FBM/DBC/amalaspi/popgen/yarizmen/from_wally/popgen/virome/tools_scripts/MetaPhlan2/metaphlan2/metaphlan2.py'
+# seed_shape: '1111111111'
 
 api_key: "8f5a7ee70253e037c5641bab48b0d6d74908"
 
