@@ -1,0 +1,295 @@
+---
+title: "Figure S04 db comparison Kraken2 & DIAMOND"
+output: html_notebook
+---
+
+```{r}
+################################################################################
+## sum up (individual contigs)
+classifiers <- c("Kraken2_35kmer", "Kraken2_29kmer", "DIAMOND_default", "DIAMOND_9aa")
+
+sets <- data.frame("set" = c(rep('deamination', 11), 
+                             rep('lengths', 7),
+                             rep('sequencing_errors', 6)),
+                   "idx" = c(
+                     c("deams_0", paste0("deams_point", c("05","1","15","2","25","3","35","4","45","5"))),
+                     paste0("length_", c(30,40,50,60,90,120,150)),
+                     c("seqerr_0", paste0("seqerr_minus", c(1,3,5,7,9)))
+                   )
+)
+sets <- sets[sets$set=="lengths",]
+
+thres <- c(1,5,10,20,50)
+
+## remove double taxIDs
+taxID.2049444 <- c("NC_040550.1","NC_040619.1","NC_040620.1","NC_040688.1","NC_040691.1","NC_040803.1","NC_040804.1","NC_040805.1","NC_040806.1")
+taxID.944645 <- c("NC_043223.1","NC_043224.1","NC_043225.1","NC_043226.1","NC_043227.1","NC_043228.1") ## sum up
+taxID.129875 <- c("AC_000005.1","NC_001460.1")
+taxID.130310 <- c("AC_000006.1","NC_010956.1")
+taxID.108098 <- c("NC_011202.1","NC_011203.1")
+taxID.NC_022518 <- "NC_022518.1" ## Human endogenous retrovirus K113
+
+## take one
+for(s in classifiers){
+  print(s)
+  for(x in 1:nrow(sets)){
+    set <- sets$set[x]
+    idx <- sets$idx[x]
+    file <- paste0(s,"/",set,"-",idx,"-count_table.tsv")
+    d <- read.table(paste0(folder,"/",file), h=T)
+    
+    ## sum up the hits on contigs (and store sum in first and remove others (see below))
+    d[,taxID.944645[1]] <- apply(d[, colnames(d) %in% taxID.944645,], 1, sum)
+    
+    ## take one
+    d <- d[,! colnames(d) %in% c(taxID.2049444[-1],     ## take first
+                                 taxID.944645[-1],      ## take first
+                                 taxID.129875[1],       ## take second
+                                 taxID.130310[1],       ## take second
+                                 taxID.108098[2],       ## take first
+                                 taxID.NC_022518)]
+    
+    write.table(d, paste0(folder,"/",s,"/",set,"-",idx,"-count_table2.tsv"), row.names = F, sep ="\t")
+  }
+}
+
+## on the read count table
+counts <- data.table(read.table(paste0(folder,"/counts_orig.txt")))
+
+## sum up and store it in first
+counts[counts$V4 %in% taxID.944645[1],'V1'] <- counts[counts$V4 %in% taxID.944645,sum(V1), by=c('V2','V3')]$V1
+
+## remove all but one
+counts <- counts[! counts$V4 %in% c(taxID.2049444[-1],     ## take first
+                                    taxID.944645[-1],      ## take first
+                                    taxID.129875[1],       ## take second
+                                    taxID.130310[1],       ## take second
+                                    taxID.108098[2],       ## take first
+                                    taxID.NC_022518), ]    ## remove retrovirus
+
+write.table(counts, paste0(folder,"/counts_orig2.txt"), row.names = F, col.names = F, sep ="\t")
+
+################################################################################
+## get classification categories
+data <- NULL
+for(s in classifiers){
+  print(s)
+  for(x in 1:nrow(sets)){
+    set <- sets$set[x]
+    idx <- sets$idx[x]
+    file <- paste0(folder,"/",s,"/",set,"-",idx,"-count_table2.tsv")
+    #print(file)
+    d <- read.table(file, h=T)
+    
+    sum.correct <- NULL
+    sum.higher <- NULL
+    sum.incorrect <- NULL
+    sum.unclassified <- NULL
+    extra.taxa <-NULL
+    extra.rank<-NULL
+    higher.rank<-NULL
+    for(i in 2:ncol(d)){
+      taxa = colnames(d)[i]
+      #print(taxa)
+      
+      ## get higher taxa
+      true.taxa <- read.table(paste0(folder,"/Higher_taxa_ids/", taxa, "_taxIDs.txt"), sep="\t")$V1
+      
+      sum.higher[i-1] <- sum(d[d$taxID %in% true.taxa[-1], i])
+      sum.correct[i-1] <- sum(d[d$taxID %in% true.taxa[1], i])
+      sum.incorrect[i-1] <- sum(d[!d$taxID %in% c(true.taxa, -2,0), i])
+      sum.unclassified[i-1] <- sum(d[d$taxID %in% c(-2,0), i])
+      
+      ## get extra taxa
+      tmp <- NULL
+      for(e in 1:length(thres)){
+        tmp[e] <- sum(d[!d$taxID %in% c(true.taxa, -2,0), i] >= e)
+      }
+      extra.taxa <- rbind(extra.taxa, tmp)
+    }
+    
+    ## combine the data
+    colnames(extra.taxa)<-paste(thres, "reads")
+    rownames(extra.taxa)<-NULL
+    tmp <- cbind(data.frame("Classifier"=s,
+                            "Set"=set,
+                            "Idx"=idx,
+                            "GenBankID"=colnames(d)[-1], 
+                            "Correct_Sp"=sum.correct, 
+                            "Correct_HT"=sum.higher, 
+                            "Incorrect"=sum.incorrect, 
+                            "unclassified"=sum.unclassified),
+                 #"extra.rank"=extra.rank,
+                 #"higher.rank"=higher.rank), 
+                 extra.taxa)
+    
+    data <- rbind(data, tmp)
+  }
+}
+
+## add total number of reads
+counts <- read.table(paste0(folder, "/counts_orig2.txt"))
+colnames(counts) <- c("Total", "Set", "Idx", "GenBankID")
+
+
+## split length and the other sets to ge the total number of reads
+data <- data.table(rbind(merge(data[data$Set == "lengths",], counts, all.x=T),
+                         merge(data[data$Set != "lengths",], counts[counts$Idx=="seqerr_minus9",c('GenBankID','Total')], all.x=T)))
+
+################################################################################
+## add unclassified
+data$Unclassified1 <- data$Total - (data$Correct_Sp + data$Correct_HT + data$Incorrect)
+
+## get ratios
+data$"Correct species" <- 100 * data$Correct_Sp / data$Total
+data$"Correct higher" <- 100 * data$Correct_HT / data$Total
+data$"Unclassified" <- 100 * data$Unclassified1 / data$Total
+data$"Incorrect" <- 100 * data$Incorrect / data$Total
+
+data$Classifier <- factor(data$Classifier, levels=classifiers)
+
+dataAll<-data
+```
+
+## classification mean
+```{r}
+plot.classification_mean <- function(mmm, title, colors){
+  
+  d <- data.table(reshape2::melt(mmm, id.vars = c('Idx','Classifier','GenBankID')))
+  colnames(d)[4:5] <- c("category", "props")
+
+  d$category <- factor(d$category, levels=c("Correct species","Correct higher","Incorrect","Unclassified"))
+  
+  d <- data.table(d)[,list(props = mean(props)), by = c('category','Classifier','Idx')]
+  a1 <- ggplot(d, aes(y = props, fill = Classifier, x = Classifier)) +
+    geom_bar(stat="identity", position="dodge") +
+    scale_fill_manual(values = colors) +
+    scale_color_manual(values = colors) +
+    geom_text(aes(label = sprintf("%.3f", round(props, 3))), 
+              position=position_dodge(width=0.9), 
+              hjust = ifelse(d$props < 50, -0.1, -0.1),
+              cex = 3, angle = 90) +
+    ylab("% reads") +
+    xlab("") +
+    ylim(0,100) +
+    ggtitle(title) +
+    #guides(fill=guide_legend(title="Classification")) +
+    theme_classic() +
+    theme(legend.position="none",
+          panel.grid.major.y = element_line()) +
+    facet_grid(vars(Idx), vars(category))
+  
+  a1
+}
+
+```
+
+## detected virus
+```{r}
+plot.detected_viruses <- function(d, title, xlab, xbreaks, xlabels, colors, default = NaN, reverse = F){
+  
+  max.taxa <- d[,.N, by=c('Classifier','Idx')]$N[1]
+  
+  FUN <- function(x)return(sum(x>0))
+  d1 <- d[,list("identified" = FUN(Correct_Sp)), by=c("Classifier","Idx")]
+  
+  o6 <- ggplot(d1, aes(x = Idx, y = identified, color = Classifier)) +
+    geom_line(size = 1) +
+    geom_hline(yintercept=max.taxa, linetype="dashed") +
+    theme_classic() +
+    scale_color_manual(values = colors) +
+    guides(color=guide_legend(title="Classifier")) +
+    ggtitle(title) +
+    ylim(0, 1.01*max.taxa) +
+    ylab("Total number of correctly detected viruses") +
+    theme(legend.position = "none",
+          panel.grid.major = element_line())
+  
+  if(!is.na(default)) o6 <- o6 + geom_vline(xintercept = default, linetype = "dashed")
+  
+  if(reverse) {
+    o6 <- o6 + scale_x_reverse(xlab, breaks = xbreaks, labels = xlabels) +
+      geom_text(aes(-Inf, max.taxa, label = paste(max.taxa, "correct viruses"), vjust = -0.7, hjust = 1), color = "black") 
+  }else{ 
+    o6 <- o6 + scale_x_continuous(xlab, breaks = xbreaks, labels = xlabels) +
+      geom_text(aes(Inf, max.taxa, label = paste(max.taxa, "correct viruses"), vjust = -0.7, hjust = 1), color = "black") 
+  }
+  
+  o6
+}
+```
+
+## extra taxa
+```{r}
+plot.extra_viruses <- function(d, title, xlab, xbreaks, xlabels, colors, default = NaN, reverse = F){
+  
+  d1 <- d[,list('all'=mean(`1 reads`)), by=c("Classifier","Idx")]
+  
+  o7 <- ggplot(d1, aes(x = Idx, color = Classifier)) +
+    geom_line(aes(y = all), size = 1) +
+    scale_color_manual(values = colors) +
+    theme_classic()+
+    guides(color=guide_legend(title="Classifier")) +
+    ggtitle(title) +
+    #ylim(0, max(d$'1 reads')) +
+    ylab("Mean number of spurious extra taxa") +
+    theme(legend.position=c(0.8, 0.6),
+          panel.grid.major = element_line()) +
+    guides(color = "none") +
+    scale_linetype_discrete(name = "Extra taxa", labels = c("Viruses", "All taxa")) 
+  
+  if(!is.na(default)) o7 <- o7 + geom_vline(xintercept = default, linetype = "dashed")
+  
+  if(reverse) {o7 <- o7 + scale_x_reverse(xlab, breaks = xbreaks, labels = xlabels)
+  }else{ o7 <- o7 + scale_x_continuous(xlab, breaks = xbreaks, labels = xlabels)}
+  
+  o7
+}
+```
+
+## length
+```{r}
+## get data
+library(gridExtra)
+library(grid)
+
+data <- dataAll[dataAll$Set == "lengths",]
+data$Idx <- as.numeric(gsub("length_", "", data$Idx))
+lengths <- names(table(data$Idx))
+
+xbreaks <- unique(data$Idx)
+xlabels <- unique(data$Idx)
+
+xlab = "read length in bp"
+
+
+color.classifersII <- c(color.classifers[2], lighten(color.classifers[2], 0.5), 
+                        color.classifers[3], lighten(color.classifers[3], 0.5))
+
+
+a <- plot.sensitivity(data[,c('Idx','Classifier','GenBankID','Correct species','Correct higher','Incorrect','Unclassified')], 
+                      "A. Mean sensitivity", xlab, xbreaks, xlabels, color.classifersII, 60)
+b <- plot.precision(data[,c('Idx','Classifier','GenBankID','Correct species','Correct higher','Incorrect','Unclassified')], 
+                    "B. Mean precision", xlab, xbreaks, xlabels, color.classifersII, 60)
+c <- plot.detected_viruses(data[,c('Idx','Classifier','GenBankID','Correct_Sp')], 
+                           "C. Total number of correctly detected viruses", xlab, xbreaks, xlabels,
+                           color.classifersII, 60)
+d <- plot.extra_viruses(data[,c('Idx','Classifier','GenBankID','1 reads')], 
+                        "D. Mean number of spurious extra taxa", xlab, xbreaks, xlabels, color.classifersII, 60)
+
+# e<- plot.classification_mean(data[,c('Idx','GenBankID','Classifier','Correct species','Correct higher','Unclassified','Incorrect')], 
+#                                 'E: Mean classification', color.classifersII)
+
+## generate pdf
+#######################################################################
+file <- paste0(folder,"/figure_S04_Kraken2_DIAMOND_small_db.pdf")
+lay <- rbind(c(1,2),
+             c(3,4))
+grob <- grid.arrange(grobs=list(a,b,c,d), layout_matrix=lay)   
+
+ggsave(file, width = 297, height = 210*3/3, scale=1, units = "mm", grob)
+
+```
+
+
+```

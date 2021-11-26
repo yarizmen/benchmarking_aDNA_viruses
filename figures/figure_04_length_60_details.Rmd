@@ -1,0 +1,138 @@
+---
+  title: "Figure 04 length 60bp Classifier detailed"
+  output: html_notebook
+---
+
+## detected virus (only at 1 read threshold)
+```{r, eval=T}
+## get data
+plot.detected_viruses2 <- function(data, title, color1, thres){
+  
+  max.taxa <- data[,.N, by=Classifier]$N[1]
+  
+  d1 <-NULL
+  for(i in thres){
+    FUN <- function(x)return(sum(x>i))
+    tmp <- data[, list('pres' = FUN(Correct_Sp)), by = c('Classifier')]
+    tmp$thres <- paste0(i, " reads")
+    d1 <- rbind(d1, tmp)
+  }
+  d1$thres[d1$thres == "1 reads"] <- "1 read"
+  
+  d1$thres <- factor(d1$thres, levels = unique(d1$thres))
+  #d1$classifier <- factor(d1$classifier, levels = levels(data$classifier))
+  
+  o4a <- ggplot(d1, aes(x = Classifier, y = pres, fill = thres)) +
+    geom_bar(stat="identity", position = "dodge") +
+    scale_color_manual(values = colours) +
+    theme_classic() +
+    geom_hline(yintercept=max.taxa, linetype="dashed") +
+    scale_fill_manual(values = color1) +
+    #geom_vline(xintercept=unique(extra$length), color=gray(0.9)) +
+    geom_text(aes(length(table(d1$Classifier))+0.5, max.taxa, 
+                  label = paste(max.taxa,"simulated viral sequences"), vjust = -0.6, hjust = 1)) +
+    #guides(color=guide_legend(title="Classifier")) +
+    geom_text(aes(label = pres), position=position_dodge(width=0.9), 
+              vjust=1.5, hjust = 0.5, cex=3, color = "white") +
+    ggtitle(title) +
+    #guides(fill=guide_legend(title="Threshold")) +
+    xlab("") +
+    theme(legend.position = "none") +
+    ylab("# viruses detected") #+
+  #theme(legend.position = "none")
+  o4a
+}
+```
+
+## extra taxa 3 (only 1 read as threshold)
+```{r}
+plot.extra_taxa_mean3 <- function(extra, title, colors){
+  
+  d <- extra
+  d$extra2 <- apply(d[,-1], 1, sum)
+  
+  d1 <- d[,list("extra"=mean(extra2, na.rm=T)), by=c('Classifier')]
+  print(d1)
+  
+  ggplot(d1, aes(y=extra, x=Classifier)) + 
+    geom_bar(position = "stack", stat = "identity", fill= "orange") + 
+    ggtitle(title) +
+    ylab("Mean number of extra taxa")  +
+    xlab("")  +
+    #scale_fill_manual(values = colors) +
+    geom_text(aes(label = sprintf("%.2f", extra)), position=position_dodge(width=0.9), 
+              vjust=1.5, hjust = 0.5, cex=3, color = "white") +
+    theme_classic() 
+  #theme(legend.position=c(0.85, 0.75))
+  #theme(legend.position=c(0.2, 0.75))
+  
+}
+```
+
+## precision - sensitivity mean
+```{r}
+plot.sensitivity_precision2 <- function(d, title, colors){
+  
+  ## sensitivity
+  d$sens <- d$`Correct species`/
+    (d$`Correct species` + d$`Correct higher` + d$Unclassified + d$Incorrect)
+  d$sens2 <- (d$`Correct species` + d$`Correct higher`) /
+    (d$`Correct species` + d$`Correct higher` + d$Unclassified + d$Incorrect)
+  
+  ## precision
+  d$prec <- d$`Correct species`/
+    (d$`Correct species` + d$`Correct higher` + d$Incorrect)
+  d$prec2 <- (d$`Correct species` + d$`Correct higher`) /
+    (d$`Correct species` + d$`Correct higher` + d$Incorrect)
+  
+  e <- rbind(d[,list('Sensitivity' = 100*mean(sens), 
+                     'Precision' = 100*mean(prec, na.rm=T), 'Category' = 'species'), 
+               by = 'Classifier'],
+             d[,list('Sensitivity' = 100*mean(sens2), 
+                     'Precision' = 100*mean(prec2, na.rm=T), 'Category' = 'species & higher'),
+               by=Classifier])
+
+  p1 <- ggplot(e, aes(x = Sensitivity, y = Precision, color = Classifier, shape = Category)) +
+    theme_classic() +
+    geom_point(size = 7) +
+    scale_color_manual(values = colors) +
+    ggtitle(title) +
+    guides(color=guide_legend(title="Classifier")) +
+    scale_shape_discrete(name = "Considered correct", labels = c("species", "species & higher")) +
+    scale_x_continuous("Mean sensitivity", breaks = seq(0,100, 10), labels = seq(0,100, 10), limits = c(0, 100)) +     scale_y_continuous("Mean precision", breaks = seq(40,100, 10), labels = seq(40,100, 10), limits = c(40, 100)) +
+    theme(legend.position=c(0.9, 0.32),
+          panel.grid.major = element_line()) +
+    coord_cartesian(clip = "off")
+  
+  p1 <- addSmallLegend(p1, pointSize = 3, textSize = 9, spaceLegend = 0.6)
+  p1
+}
+
+```
+
+
+## figure 03 length 60 details
+```{r}
+library("gridExtra")
+
+a04 <- plot.sensitivity_precision2(
+  dataAll[dataAll$Idx=='length_60',c('GenBankID','Classifier','Correct species','Correct higher','Unclassified','Incorrect')], 
+  "A. Sensitivity vs. precision", color.classifers)
+
+library(colorspace)
+b04 <-plot.detected_viruses2(dataAll[dataAll$Idx=='length_60',c('Classifier','Correct_Sp')], 
+                             "B. Total number of correctly detected viruses", 
+                             colorcillos[1], 1)
+library("RColorBrewer")
+names <- paste0(rank.taxa, "_nb.taxa_1")
+columns <- c("Classifier",names)
+c04 <-plot.extra_taxa_mean3(dataAll[dataAll$Idx=='length_60', ..columns], 
+                            "C. Mean number of spurious extra taxa", 
+                            brewer.pal(n = length(rank.taxa), name = 'Set1'))
+
+
+lay <- rbind(c(1,1),c(2,3))
+grob <- grid.arrange(grobs=list(a04, b04, c04), layout_matrix=lay)   
+ggsave(paste0(folder,"/figure_04_length_60_details.pdf"), width = 297, height = 297, scale=0.8, units = "mm", grob)
+
+```
