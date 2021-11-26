@@ -4,7 +4,6 @@ configfile: 'config_run_classifiers_curnagl.yaml'
 
 rule all:
     input:
-        #"MALT_output/rma6/count_table.tsv",
         "Centrifuge_output/count_table.tsv",
         "Kraken2_output/count_table.tsv",
         "DIAMOND_output/count_table.tsv",
@@ -133,7 +132,6 @@ rule run_DIAMOND:
         runtime = "40:00:00",
         mode = 'blastx',
         database = config['path2DIAMOND_db']
-        # seed_shape = config['seed_shape']
     resources:
         memory = 26000 
     threads: 5
@@ -146,7 +144,6 @@ rule run_DIAMOND:
         diamond {params.mode} -p {threads} -d {params.database} -q {input} \
         -o {output} -f 102
         '''
-        # --shape-mask {params.seed_shape}
 
 rule reads_per_taxon_DIAMOND:
     input:
@@ -275,45 +272,3 @@ rule join_into_counts_table:
         '''
         Rscript --vanilla {params.path2merge_script} -o {output}
         '''
-
-
-## run for each fastq file
-## the output for each set has to be in a seperate folder
-rule run_malt:
-    input:
-        fastq = "samples/fastq_files/{sample}.fq.gz",
-        db = "/work/FAC/FBM/DBC/amalaspi/popgen/sneuensc/virome/malt/index_nucl"
-    output:
-        "MALT_output/rma6/{sample}.rma6"
-    log:
-        "logs/MALT/rma6/{sample}_run_malt.log"
-    params:
-        runtime = "01:00:00"
-    resources:
-        memory = 40000
-    conda:
-        "/work/FAC/FBM/DBC/amalaspi/popgen/sneuensc/conda/envs/hops"
-    shell:
-        """
-        malt-run -J-Xmx40000m -d {input.db} -i {input.fastq} -o {output} -m BlastN
-        """
- 
- ## run on all runs of a set (all rma6 of a set should be located in the same folder)
-rule extract_malt:
-    input:
-        rma6 = expand("MALT_output/rma6/{sample}.rma6", sample=config['samples'])
-    output:
-        "MALT_output/rma6/count_table.tsv"
-    params:
-        runtime = "05:00:00"
-    resources:
-        memory = 10000
-    log:
-        "logs/MALT/extract_malt.log"
-    conda:
-        "/work/FAC/FBM/DBC/amalaspi/popgen/sneuensc/conda/envs/megan"
-    shell:
-        """
-        bash /work/FAC/FBM/DBC/amalaspi/popgen/sneuensc/virome/malt/rma-tabuliser/rma-tabuliser -d MALT_output/rma6 -u
-        sed -i 's:_simulated::g' MALT_output/rma6/count_table.tsv
-        """
