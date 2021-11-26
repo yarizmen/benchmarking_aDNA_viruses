@@ -7,21 +7,13 @@ samples: ["AC_000005.1", "AC_000006.1", "AC_000007.1", "AC_000008.1", "AC_000010
 path2Centrifuge_db: '/work/FAC/FBM/DBC/amalaspi/popgen/yarizmen/from_wally/virome/simulations_Feb_2020b/abv'
 
 # Kraken2
-# Old database
 path2Kraken2_db: '/work/FAC/FBM/DBC/amalaspi/popgen/yarizmen/from_wally/virome/simulations_Feb_2020b/KRAKEN2database'
-# New database (default k-mer length)
-#path2Kraken2_db: '/work/FAC/FBM/DBC/amalaspi/popgen/sneuensc/virome/kraken2/kraken2_35kmer'
-# New database (29 k-mer length)
-#path2Kraken2_db: '/work/FAC/FBM/DBC/amalaspi/popgen/sneuensc/virome/kraken2/kraken2_29kmer'
 
 # DIAMOND
 path2DIAMOND_db: '/work/FAC/FBM/DBC/amalaspi/popgen/yarizmen/from_wally/virome/simulations_Feb_2020b/Viral_tax'
 
 # MetaPhlAn2
 path2MetaPhlAn2: '/work/FAC/FBM/DBC/amalaspi/popgen/yarizmen/from_wally/popgen/virome/tools_scripts/MetaPhlan2/metaphlan2/metaphlan2.py'
-# seed_shape: '1111111111'
-
-api_key: "8f5a7ee70253e037c5641bab48b0d6d74908"
 
 # From MetaPhlAn2 names to taxIDs
 path2Rscript: '/work/FAC/FBM/DBC/amalaspi/popgen/yarizmen/from_wally/virome/simulations_classifiers/classifiers/MetaPhlAn2_labels_to_taxIDs_v2.R'
